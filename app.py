@@ -3316,6 +3316,21 @@ with st.sidebar:
     st.markdown("**View**")
     for _p in _view_pages:
         st.page_link(_p)
+
+    # Quick theme toggle, right below the main nav — same settings.json source
+    # of truth as the Settings > Appearance page (via _write_settings), so
+    # whichever control was used last wins and both stay in sync.
+    _saved_theme_now = settings.get('theme', 'light')
+    _dark_on = st.toggle(
+        "🌙 Dark mode", value=(_saved_theme_now == 'dark'), key='sidebar_dark_toggle',
+    )
+    _sidebar_new_theme = 'dark' if _dark_on else 'light'
+    if _sidebar_new_theme != _saved_theme_now:
+        import copy as _copy
+        _sidebar_new_settings = _copy.deepcopy(settings)
+        _sidebar_new_settings['theme'] = _sidebar_new_theme
+        _write_settings(_sidebar_new_settings, _sidebar_new_theme, _saved_theme_now)
+
     render_data_sync(df)
     st.divider()
     st.markdown("**Settings**")

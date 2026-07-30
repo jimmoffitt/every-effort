@@ -2740,6 +2740,36 @@ def _write_settings(new_settings, new_theme, old_theme):
         st.rerun()
 
 
+def _handle_sport_photo_upload(sport_key, text_input_key, uploaded_file):
+    """If a new file was just dropped into a sport-tab photo uploader, save its
+    bytes to data/custom_images/<sport_key>.<ext> and pre-seed the matching
+    text_input's session_state so the path field and preview reflect it
+    immediately — same as if the path had been typed by hand. Nothing is
+    persisted to settings.json until the page's own Save button is clicked,
+    consistent with every other widget on this page.
+
+    Guarded by an upload-identity check (file_id, falling back to name+size on
+    older Streamlit) because st.file_uploader keeps returning the same
+    UploadedFile on every rerun until the user replaces/clears it — without
+    the guard, this would re-fire every rerun and clobber a manual edit made
+    to the text field afterward."""
+    if uploaded_file is None:
+        return
+    upload_id = getattr(uploaded_file, 'file_id', None) or f"{uploaded_file.name}:{uploaded_file.size}"
+    guard_key = f"_{sport_key}_photo_upload_id"
+    if st.session_state.get(guard_key) == upload_id:
+        return
+    st.session_state[guard_key] = upload_id
+
+    ext = os.path.splitext(uploaded_file.name)[1].lower() or '.jpg'
+    dest_dir = os.path.join(config.DATA_DIR, 'custom_images')
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, f"{sport_key}{ext}")
+    with open(dest, 'wb') as f:
+        f.write(uploaded_file.getbuffer())
+    st.session_state[text_input_key] = dest
+
+
 def render_settings_section(settings, section):
     """Render one settings section as a standalone sidebar page.
 
@@ -2885,11 +2915,20 @@ def render_settings_section(settings, section):
         st.subheader("Sport tab images")
         st.caption(
             "Each sport tab shows a default image beside its all-time stats — a bundled "
-            "photo for Snow and Swim, or the auto-generated route heatmap for Bike. Set a "
-            "path here to override any of them with your own image."
+            "photo for Snow and Swim, or the auto-generated route heatmap for Bike. "
+            "Upload your own photo, or type a path to an existing file, to override any "
+            "of them. Nothing here takes effect until you hit Save below."
         )
+        if config.DEMO_MODE:
+            st.caption("Demo mode — photo uploads are disabled on the public demo.")
         _img_col_bike, _img_col_snow, _img_col_swim = st.columns(3)
         with _img_col_bike:
+            if not config.DEMO_MODE:
+                _bike_upload = st.file_uploader(
+                    "Upload a bike photo", type=["png", "jpg", "jpeg", "webp"],
+                    key="settings_bike_image_upload",
+                )
+                _handle_sport_photo_upload('bike', 'settings_bike_image_path', _bike_upload)
             bike_path = st.text_input(
                 "Bike image path (blank = route heatmap)",
                 key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
@@ -2901,6 +2940,12 @@ def render_settings_section(settings, section):
             else:
                 st.caption(f"⚠ File not found: {_bike_preview}")
         with _img_col_snow:
+            if not config.DEMO_MODE:
+                _snow_upload = st.file_uploader(
+                    "Upload a snow photo", type=["png", "jpg", "jpeg", "webp"],
+                    key="settings_snow_image_upload",
+                )
+                _handle_sport_photo_upload('snow', 'settings_snow_image_path', _snow_upload)
             snow_path = st.text_input(
                 "Snow image path (blank = default)",
                 key="settings_snow_image_path", value=saved_images.get('snow_path') or '',
@@ -2912,6 +2957,12 @@ def render_settings_section(settings, section):
             else:
                 st.caption(f"⚠ File not found: {_snow_preview}")
         with _img_col_swim:
+            if not config.DEMO_MODE:
+                _swim_upload = st.file_uploader(
+                    "Upload a swim photo", type=["png", "jpg", "jpeg", "webp"],
+                    key="settings_swim_image_upload",
+                )
+                _handle_sport_photo_upload('swim', 'settings_swim_image_path', _swim_upload)
             swim_path = st.text_input(
                 "Swim image path (blank = default)",
                 key="settings_swim_image_path", value=saved_images.get('swim_path') or '',

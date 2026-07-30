@@ -21,6 +21,9 @@ data/athlete_stats.json
 # User settings — personal preferences, not shared
 data/settings.json
 
+# Uploaded sport-tab photos (Settings > Sports) — personal images, not shared
+data/custom_images/
+
 # Demo mode (data/demo/): the sanitized activities.json and gear_map.json from
 # make_demo_data.py ARE tracked; runtime writes made while running in demo
 # mode are not.

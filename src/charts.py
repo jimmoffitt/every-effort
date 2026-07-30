@@ -536,6 +536,35 @@ def make_labeled_bar_chart(labels, values, title, x_label, y_label, color=None):
     return fig
 
 
+def make_monthly_hours_chart(monthly_df, hours_col='hours', label_col='month_label', height=280):
+    """Filled line chart of hours by month, peak month called out with a
+    marker + label — the Wrapped 'Hours Active' card, mirroring the reference
+    Strava Year-in-Sport 'Hours Active' slide's line-with-callout shape."""
+    labels = monthly_df[label_col].tolist()
+    values = monthly_df[hours_col].tolist()
+    peak_i = max(range(len(values)), key=lambda i: values[i]) if values else 0
+
+    fig = go.Figure(go.Scatter(
+        x=labels, y=values, mode='lines',
+        line=dict(color=STRAVA_ORANGE, width=3, shape='spline'),
+        fill='tozeroy', fillcolor='rgba(252,76,2,0.15)',
+    ))
+    if values:
+        fig.add_trace(go.Scatter(
+            x=[labels[peak_i]], y=[values[peak_i]], mode='markers+text',
+            marker=dict(color=STRAVA_ORANGE, size=10),
+            text=[f"{values[peak_i]:,.0f} h"], textposition='top center',
+            showlegend=False, hoverinfo='skip',
+        ))
+    fig.update_layout(**_base_layout(
+        title="Hours Active by Month",
+        xaxis_title="Month", yaxis_title="Hours",
+        showlegend=False, height=height,
+    ))
+    fig.update_yaxes(gridcolor=_grid_color())
+    return fig
+
+
 def make_recent_months_chart(months_df, this_year, last_year, unit_label):
     """
     Grouped bar chart: this year (orange) vs last year (blue) for recent months.

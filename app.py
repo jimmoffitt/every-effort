@@ -2,7 +2,7 @@
 app.py — Streamlit dashboard entry point.
 
 Renders the multi-tab Equity Miles UI: Bike, Snow, Swim, Combined (equity),
-Wrapped, Explore, Export, and Settings. Each tab has a dedicated render_*
+Wrapped Stories, Explore, Export, and Settings. Each tab has a dedicated render_*
 function that pulls pre-processed DataFrames from process_data, passes them
 to Plotly figure factories in charts.py, and displays the results with
 st.plotly_chart. Data is loaded once per session via @st.cache_data helpers;
@@ -19,7 +19,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as _components
 
-from src import config, process_data
+from src import config, process_data, story
 from src import charts as _charts_mod
 from src.charts import (
     HIKE_GREEN,
@@ -37,6 +37,7 @@ from src.charts import (
     make_equity_monthly_chart,
     make_labeled_bar_chart,
     make_monthly_chart,
+    make_monthly_hours_chart,
     make_period_comparison_chart,
     make_recent_months_chart,
     make_season_vert_chart,
@@ -1915,16 +1916,46 @@ def _wrapped_legend_strip(label_low="Less", label_high="More"):
     )
 
 
+@st.dialog("🎬 Wrapped Story", width="large")
+def _wrapped_story_dialog(df):
+    """The story-carousel popup triggered by 'Play Wrapped Slides' on the
+    Wrapped Stories tab. A real modal (st.dialog), not an inline reveal —
+    mirrors the sibling spotify-stats app's Wrapped Story pattern. Always a
+    fixed calendar-year, all-sports recap (process_data.wrapped_story_data),
+    independent of whatever period/sport filter is set on the tab behind it."""
+    st.caption("A shareable set of story-style slides for one year — use "
+               "the arrow keys, tap the sides, or swipe.")
+    years = sorted((int(y) for y in df['year'].dropna().unique()), reverse=True)
+    if not years:
+        st.info("No data yet.")
+        return
+    year = st.selectbox("Year", years, key="story_year")
+    data = process_data.wrapped_story_data(df, year)
+    if data is None:
+        st.info("No activities in that year.")
+        return
+    html = story.render_story_html(data)
+    _components.html(html, height=760, scrolling=False)
+    st.download_button(
+        "⬇️ Download as HTML", data=html,
+        file_name=f"wrapped_story_{year}.html", mime="text/html",
+        help="A single self-contained file — data baked in, works offline, "
+             "shareable outside the app.")
+
+
 # ---------------------------------------------------------------------------
-# Wrapped tab
+# Wrapped Stories tab
 # ---------------------------------------------------------------------------
 def render_wrapped_tab(df, settings, athlete_profile):
-    """Wrapped tab — a Spotify-Wrapped-style "reveal" for an arbitrary
-    period/sport selection (not just a fixed year like Strava's own Wrapped):
-    period + sport + Year/Month breakdown controls, a hero number with a
-    prior-period delta, KPI cards, a trend chart + sport-breakdown donut, an
-    activity calendar heatmap, PR-flagged records, fun facts, and a longest-
-    activities table. Uses the period/sport filter helpers above, so its
+    """Wrapped Stories tab — a Spotify/Strava-Wrapped-style "reveal" for an
+    arbitrary period/sport selection (not just a fixed year like Strava's own
+    Wrapped): period + sport + Year/Month breakdown controls, a hero number
+    with a prior-period delta, KPI cards, a trend chart + sport-breakdown
+    donut, a top-sports ranked list, monthly days/hours-active cards, an
+    activity calendar heatmap, a weekly-streak card, PR-flagged records, fun
+    facts, and a longest-activities table — plus a "Play Wrapped Slides"
+    button that opens a swipeable story carousel (src/story.py) for a chosen
+    calendar year. Uses the period/sport filter helpers above, so its
     prior-period comparison is period-type-aware (year-over-year, same month
     last year, or trailing-N-days-over-trailing-N-days)."""
     today = date.today()
@@ -1966,7 +1997,10 @@ def render_wrapped_tab(df, settings, athlete_profile):
 
     # --- Header ---
     who = (athlete_profile['firstname'] + " — ") if athlete_profile.get('firstname') else ""
-    st.markdown(f"### {who}{selected_period} · {selected_sport}")
+    header_col, button_col = st.columns([4, 1.4], vertical_alignment="center")
+    header_col.markdown(f"### {who}{selected_period} · {selected_sport}")
+    if button_col.button("🎬 Play Wrapped Slides", use_container_width=True):
+        _wrapped_story_dialog(df)
 
     def _delta(key):
         if not prior_totals:
@@ -2028,6 +2062,22 @@ def render_wrapped_tab(df, settings, athlete_profile):
         st.divider()
         st.subheader("Top Sports")
         _wrapped_top_sports(bucket_df, 'mi')
+
+    st.divider()
+
+    # --- Monthly rhythm: days active + hours active ---
+    st.subheader("Monthly Rhythm")
+    monthly = stats['monthly']
+    col_days, col_hours = st.columns(2)
+    with col_days:
+        st.plotly_chart(
+            make_labeled_bar_chart(
+                monthly['month_label'], monthly['days_active'],
+                "Days Active by Month", "Month", "Days",
+            ),
+        )
+    with col_hours:
+        st.plotly_chart(make_monthly_hours_chart(monthly))
 
     st.divider()
 
@@ -2668,6 +2718,11 @@ def _write_settings(new_settings, new_theme, old_theme):
         json.dump(new_settings, f, indent=2)
     load_settings.clear()
     if new_theme != old_theme:
+        # Other pages visited earlier this session were already marked
+        # synced against the OLD theme (see the per-path guard near
+        # st.navigation below) — clear that so their next visit re-syncs
+        # against the newly-saved theme instead of keeping stale localStorage.
+        st.session_state.pop('_theme_synced_paths', None)
         _apply_theme_js(new_theme)
     else:
         st.success("Settings saved.")
@@ -3089,11 +3144,18 @@ swim_df  = df[df['final_type'].isin(SWIM_TYPES)  & ~_eq_mask].copy()
 run_df   = df[df['final_type'].isin(RUN_TYPES)   & ~_eq_mask].copy()
 hike_df  = df[df['final_type'].isin(HIKE_TYPES)  & ~_eq_mask].copy()
 
-# On first render of each browser session, sync localStorage to the saved theme
-# preference.  Subsequent renders skip this (initial_theme_synced is set) so
-# that the user can still override via Streamlit's native ⋮ Settings menu.
-if not st.session_state.get('initial_theme_synced'):
-    st.session_state['initial_theme_synced'] = True
+# On first render of each PAGE (not just each browser session), sync
+# localStorage to the saved theme preference. Streamlit's own theme choice is
+# stored per URL path (see _apply_theme_js's 'stActiveTheme-<pathname>-v1' key),
+# so a once-per-session guard here would only ever sync whichever page happened
+# to load first — every other page's first visit in that session would fall
+# back to Streamlit's own default (light) instead of the saved setting. Once a
+# given path has been synced, subsequent reruns on that same path skip this, so
+# the user can still override via Streamlit's native ⋮ Settings menu without it
+# snapping back.
+_synced_paths = st.session_state.setdefault('_theme_synced_paths', set())
+if st.context.url not in _synced_paths:
+    _synced_paths.add(st.context.url)
     _saved_theme = settings.get('theme', 'light')
     _current_theme = st.context.theme.type or 'light'
     if _saved_theme != _current_theme:
@@ -3104,7 +3166,6 @@ if not st.session_state.get('initial_theme_synced'):
 # the spotify-stats layout. Page selection survives reruns (no tab snap-back),
 # and routing guarantees exactly one active item across all groups. Each page is
 # a zero-arg callable that closes over the module-level frames loaded above.
-# TODO: Wrapped stays in View for now; revisit its contents to make it richer.
 # ---------------------------------------------------------------------------
 def _p_bike():     render_bike_tab(bike_df, gear_map, settings)
 def _p_snow():     render_ski_tab(ski_df, settings)
@@ -3156,7 +3217,7 @@ _view_pages = [
     _page(fn, title, icon, path) for _, fn, title, icon, path in _enabled_sport_specs
 ] + [
     _page(_p_combined, "Combined", "➕", "combined"),
-    _page(_p_wrapped,  "Wrapped",  "🎁", "wrapped"),
+    _page(_p_wrapped,  "Wrapped Stories",  "🎁", "wrapped"),
 ]
 _tools_pages = [
     _page(_p_explore, "Explore", "🔍", "explore"),

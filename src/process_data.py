@@ -1121,6 +1121,7 @@ def compute_period_stats(df):
             miles=('distance_miles', 'sum'),
             hours=('moving_time', lambda x: x.sum() / 3600),
             count=('id', 'count'),
+            days_active=('_date', 'nunique'),
         )
         .reset_index()
         .sort_values(['year', '_month'])
@@ -1436,3 +1437,71 @@ def compute_weekly_streak(weekly_df):
         else:
             run_len = 0
     return result
+
+
+_STORY_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+
+def monthly_breakdown_for_year(df, year):
+    """Per-calendar-month days-active/hours/miles for one year, always 12
+    zero-filled rows (Jan-Dec) — used by the Wrapped Story carousel's
+    days-active and hours slides, which shouldn't have to special-case
+    missing months. Unlike compute_period_stats' monthly breakdown, this is
+    scoped to a single fixed calendar year rather than an arbitrary period."""
+    cols = ['month', 'label', 'days_active', 'hours', 'miles']
+    sub = df[df['year'] == year]
+    if sub.empty:
+        return pd.DataFrame({
+            'month': range(1, 13), 'label': _STORY_MONTH_LABELS,
+            'days_active': [0] * 12, 'hours': [0.0] * 12, 'miles': [0.0] * 12,
+        })[cols]
+
+    month = sub['start_date_local'].dt.month
+    by_days  = sub.assign(_d=sub['start_date_local'].dt.date).groupby(month)['_d'].nunique()
+    by_hours = sub.groupby(month)['moving_time'].sum() / 3600
+    by_miles = sub.groupby(month)['distance_miles'].sum()
+    return pd.DataFrame({
+        'month':       range(1, 13),
+        'label':       _STORY_MONTH_LABELS,
+        'days_active': [int(by_days.get(m, 0)) for m in range(1, 13)],
+        'hours':       [round(float(by_hours.get(m, 0.0)), 1) for m in range(1, 13)],
+        'miles':       [round(float(by_miles.get(m, 0.0)), 1) for m in range(1, 13)],
+    })[cols]
+
+
+def wrapped_story_data(df, year, top_n=4):
+    """Assembles everything the Wrapped Story carousel needs for one calendar
+    year into a single JSON-safe dict: totals, the monthly days/hours series,
+    the longest weekly-activity streak (with its date range), and a
+    top-sports leaderboard. Always scoped to 'All activities' for the year
+    (manual equity declarations excluded), independent of whatever
+    period/sport filter is selected elsewhere on the Wrapped Stories tab —
+    a year-in-review, same as Strava's own. Returns None if there's no data
+    for that year."""
+    eq_mask = df['name'].str.match(_EQ_PATTERN, na=False)
+    sub = df[(df['year'] == year) & ~eq_mask]
+    if sub.empty:
+        return None
+
+    weekly = build_weekly_activity(sub, max_weeks=53)
+    streak = compute_weekly_streak(weekly)
+    bucket_df = bucket_distance_breakdown(sub)
+    top_sports = bucket_df.sort_values('miles', ascending=False).head(top_n)
+
+    return {
+        'year':                 int(year),
+        'total_miles':          round(float(sub['distance_miles'].sum()), 1),
+        'total_hours':          round(float(sub['moving_time'].sum() / 3600)),
+        'total_activities':     int(len(sub)),
+        'active_days':          int(sub['start_date_local'].dt.date.nunique()),
+        'total_vert_ft':        round(float(sub['elevation_feet'].sum())),
+        'longest_streak_weeks': int(streak['length']),
+        'streak_start':         str(streak['start']) if streak['start'] else None,
+        'streak_end':           str(streak['end'] + timedelta(days=6)) if streak['end'] else None,
+        'monthly':              monthly_breakdown_for_year(sub, year).to_dict('records'),
+        'top_sports': [
+            {'rank': i + 1, 'bucket': r['bucket'], 'label': r['label'], 'miles': r['miles']}
+            for i, r in enumerate(top_sports.to_dict('records'))
+        ],
+    }

@@ -673,6 +673,7 @@ def render_bike_tab(bike_df, gear_map, settings):
     comparison views). Bike/Snow/Swim each follow this same shape; Running
     and Hiking use the generalized render_activity_tab version of it instead
     of duplicating this function."""
+    st.title("🚴 Bike")
     current_year = date.today().year
     _unit = st.session_state.get('bike_unit', 'Miles')
     _is_mi = _unit == 'Miles'
@@ -869,6 +870,7 @@ def render_ski_tab(ski_df, settings):
     keyed by its start year — Oct-Dec belongs to that year, Jan-Sep to the
     following one, see process_data._ski_season_key) rather than a calendar
     year. Numbered comments below walk the section order."""
+    st.title("⛷️ Snow")
     if ski_df.empty:
         st.info("No snow activities found in the archive.")
         return
@@ -1078,6 +1080,7 @@ def render_swim_tab(swim_df, settings, df=None):
     (meters/yards, toggled by the Units radio) with an "All time" option
     alongside individual years where Bike/Snow only offer single periods.
     The ``df`` parameter is accepted but currently unused."""
+    st.title("🏊 Swim")
     if swim_df.empty:
         st.info("No swim activities found in the archive.")
         return
@@ -1264,6 +1267,8 @@ def render_swim_tab(swim_df, settings, df=None):
 # ---------------------------------------------------------------------------
 def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, color_light=None,
                         count_noun='Activities', gear_noun='Gear', ref_label=None):
+    _tab_icon = {'run': '🏃', 'hike': '🥾'}.get(sport_key, '')
+    st.title(f"{_tab_icon} {label}".strip())
     if df.empty:
         st.info(f"No {label.lower()} activities found in the archive.")
         return
@@ -1434,6 +1439,16 @@ def render_equity_tab(df, settings):
     annual_goal = goals.get('annual_equity_miles', 0)
     monthly_goal= goals.get('monthly_equity_miles', 0)
     ref_label   = settings.get('reference_sport', 'Bike')
+
+    st.title("➕ Combined")
+    st.caption(
+        f"A week of skiing or swimming doesn't produce a mileage number that means "
+        f"anything next to a bike ride — so **equity miles** convert every sport's "
+        f"effort into the currency of one reference sport ({ref_label}, by default), "
+        f"letting you see total fitness output across every sport you trained in, "
+        f"no matter which mix of sports made up the year."
+    )
+    st.page_link(_settings_sports_page, label="Set conversion rates in Settings → Sports", icon="⚙️")
 
     today = date.today()
     current_year = today.year
@@ -1969,6 +1984,7 @@ def render_wrapped_tab(df, settings, athlete_profile):
     calendar year. Uses the period/sport filter helpers above, so its
     prior-period comparison is period-type-aware (year-over-year, same month
     last year, or trailing-N-days-over-trailing-N-days)."""
+    st.title("🎁 Wrapped Stories")
     today = date.today()
     current_year = today.year
 
@@ -2236,6 +2252,7 @@ def render_trends_tab(df):
 
 def render_explore_tab(df, gear_map):
     """Interactive activity explorer — filter by date range, name search, and type."""
+    st.title("🔍 Explore")
     all_types = sorted(df['final_type'].dropna().unique().tolist())
     min_date = df['start_date_local'].dt.date.min()
     max_date = df['start_date_local'].dt.date.max()
@@ -2365,6 +2382,7 @@ def render_export_tab(df, settings):
     selected year; (4) a "download everything" ZIP bundling every chart PNG
     and table CSV generated above. PNG downloads degrade gracefully via
     _png_download_button when kaleido has no Chrome to render with."""
+    st.title("📤 Export")
     import calendar as _cal
     today = date.today()
     current_year = today.year
@@ -2799,6 +2817,7 @@ def render_settings_section(settings, section):
 
     # ---- Sports ----
     if section == "sports":
+        st.title("⚙️ Sports")
         st.subheader("Primary Sport Tabs")
         st.caption(
             "Which sports get a dedicated tab in the View section of the sidebar. "
@@ -3002,7 +3021,7 @@ def render_settings_section(settings, section):
 
     # ---- Goals ----
     elif section == "goals":
-        st.subheader("Goals")
+        st.title("⚙️ Goals")
         st.markdown("**Equity Miles**")
         gcol_annual, gcol_monthly = st.columns(2)
         with gcol_annual:
@@ -3090,6 +3109,7 @@ def render_settings_section(settings, section):
 
     # ---- Seasons ----
     elif section == "seasons":
+        st.title("⚙️ Seasons")
         st.subheader("Season Months")
         st.caption("Controls which months appear in the monthly chart on each sport tab.")
 
@@ -3130,6 +3150,7 @@ def render_settings_section(settings, section):
 
     # ---- Map ----
     elif section == "map":
+        st.title("⚙️ Map")
         st.subheader("Home Location")
         st.caption(
             "When enabled, the bike heatmap centers on your home location instead of "
@@ -3267,8 +3288,11 @@ _tools_pages = [
 ]
 # Settings expands into one page per section, listed independently in the
 # sidebar (iconless, to match the View/Tools sports' visual grouping).
+# _settings_sports_page is kept as its own name (not just _settings_pages[0])
+# so the Combined tab can st.page_link directly to it.
+_settings_sports_page = _page(_p_set_sports, "Sports", None, "settings-sport")
 _settings_pages = [
-    _page(_p_set_sports,  "Sports",  None, "settings-sport"),
+    _settings_sports_page,
     _page(_p_set_goals,   "Goals",   None, "settings-goals"),
     _page(_p_set_seasons, "Seasons", None, "settings-seasons"),
     _page(_p_set_map,     "Map",     None, "settings-map"),

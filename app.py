@@ -2882,6 +2882,48 @@ def render_settings_section(settings, section):
             )
 
         st.divider()
+        st.subheader("Sport tab images")
+        st.caption(
+            "Each sport tab shows a default image beside its all-time stats — a bundled "
+            "photo for Snow and Swim, or the auto-generated route heatmap for Bike. Set a "
+            "path here to override any of them with your own image."
+        )
+        _img_col_bike, _img_col_snow, _img_col_swim = st.columns(3)
+        with _img_col_bike:
+            bike_path = st.text_input(
+                "Bike image path (blank = route heatmap)",
+                key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
+                placeholder=config.BIKE_DEFAULT_IMAGE,
+            )
+            _bike_preview = bike_path or config.BIKE_DEFAULT_IMAGE
+            if os.path.exists(_bike_preview):
+                st.image(_bike_preview, width=180)
+            else:
+                st.caption(f"⚠ File not found: {_bike_preview}")
+        with _img_col_snow:
+            snow_path = st.text_input(
+                "Snow image path (blank = default)",
+                key="settings_snow_image_path", value=saved_images.get('snow_path') or '',
+                placeholder=config.SNOW_DEFAULT_IMAGE,
+            )
+            _snow_preview = snow_path or config.SNOW_DEFAULT_IMAGE
+            if os.path.exists(_snow_preview):
+                st.image(_snow_preview, width=180)
+            else:
+                st.caption(f"⚠ File not found: {_snow_preview}")
+        with _img_col_swim:
+            swim_path = st.text_input(
+                "Swim image path (blank = default)",
+                key="settings_swim_image_path", value=saved_images.get('swim_path') or '',
+                placeholder=config.SWIM_DEFAULT_IMAGE,
+            )
+            _swim_preview = swim_path or config.SWIM_DEFAULT_IMAGE
+            if os.path.exists(_swim_preview):
+                st.image(_swim_preview, width=180)
+            else:
+                st.caption(f"⚠ File not found: {_swim_preview}")
+
+        st.divider()
         if st.button("Save settings", type="primary"):
             _save(
                 reference_sport=ref_sport,
@@ -2899,6 +2941,11 @@ def render_settings_section(settings, section):
                     'paddle_miles_per_ref_unit': paddle_rate,
                     'swim_meters_per_ref_unit':  swim_rate,
                     'ski_vert_per_ref_unit':     ski_rate,
+                },
+                images={
+                    'bike_path': (bike_path or '').strip() or None,
+                    'snow_path': (snow_path or '').strip() or None,
+                    'swim_path': (swim_path or '').strip() or None,
                 },
             )
 
@@ -3065,72 +3112,6 @@ def render_settings_section(settings, section):
                 'lon': home_lon if home_enabled else None,
             })
 
-    # ---- Appearance ----
-    elif section == "appearance":
-        _theme_opts = ['dark', 'light']
-        _saved_theme = settings.get('theme', 'light')
-        st.subheader("Theme")
-        theme = st.radio(
-            "Appearance", _theme_opts,
-            index=_theme_opts.index(_saved_theme) if _saved_theme in _theme_opts else 1,
-            horizontal=True,
-            format_func=lambda x: 'Dark' if x == 'dark' else 'Light',
-            key='settings_theme',
-        )
-        st.caption("Takes effect immediately on save.")
-
-        st.divider()
-        st.subheader("Sport tab images")
-        st.caption(
-            "Each sport tab shows a default image beside its all-time stats — a bundled "
-            "photo for Snow and Swim, or the auto-generated route heatmap for Bike. Set a "
-            "path here to override any of them with your own image."
-        )
-        _img_col_bike, _img_col_snow, _img_col_swim = st.columns(3)
-        with _img_col_bike:
-            bike_path = st.text_input(
-                "Bike image path (blank = route heatmap)",
-                key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
-                placeholder=config.BIKE_DEFAULT_IMAGE,
-            )
-            _bike_preview = bike_path or config.BIKE_DEFAULT_IMAGE
-            if os.path.exists(_bike_preview):
-                st.image(_bike_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_bike_preview}")
-        with _img_col_snow:
-            snow_path = st.text_input(
-                "Snow image path (blank = default)",
-                key="settings_snow_image_path", value=saved_images.get('snow_path') or '',
-                placeholder=config.SNOW_DEFAULT_IMAGE,
-            )
-            _snow_preview = snow_path or config.SNOW_DEFAULT_IMAGE
-            if os.path.exists(_snow_preview):
-                st.image(_snow_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_snow_preview}")
-        with _img_col_swim:
-            swim_path = st.text_input(
-                "Swim image path (blank = default)",
-                key="settings_swim_image_path", value=saved_images.get('swim_path') or '',
-                placeholder=config.SWIM_DEFAULT_IMAGE,
-            )
-            _swim_preview = swim_path or config.SWIM_DEFAULT_IMAGE
-            if os.path.exists(_swim_preview):
-                st.image(_swim_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_swim_preview}")
-
-        st.divider()
-        if st.button("Save settings", type="primary"):
-            _save(
-                theme=theme,
-                images={
-                    'bike_path': (bike_path or '').strip() or None,
-                    'snow_path': (snow_path or '').strip() or None,
-                    'swim_path': (swim_path or '').strip() or None,
-                },
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -3195,7 +3176,6 @@ def _p_set_sports():  render_settings_section(settings, "sports")
 def _p_set_goals():   render_settings_section(settings, "goals")
 def _p_set_seasons(): render_settings_section(settings, "seasons")
 def _p_set_map():     render_settings_section(settings, "map")
-def _p_set_appear():  render_settings_section(settings, "appearance")
 
 # Which sport tabs are enabled, in the fixed View order — Combined/Wrapped
 # always show every sport regardless of this and are appended separately.
@@ -3237,11 +3217,10 @@ _tools_pages = [
 # Settings expands into one page per section, listed independently in the
 # sidebar (iconless, to match the View/Tools sports' visual grouping).
 _settings_pages = [
-    _page(_p_set_sports,  "Sport types and equity", None, "settings-sport"),
-    _page(_p_set_goals,   "Goals",        None, "settings-goals"),
-    _page(_p_set_seasons, "Seasons",      None, "settings-seasons"),
-    _page(_p_set_map,     "Map",          None, "settings-map"),
-    _page(_p_set_appear,  "Appearance",   None, "settings-appearance"),
+    _page(_p_set_sports,  "Sports",  None, "settings-sport"),
+    _page(_p_set_goals,   "Goals",   None, "settings-goals"),
+    _page(_p_set_seasons, "Seasons", None, "settings-seasons"),
+    _page(_p_set_map,     "Map",     None, "settings-map"),
 ]
 
 pg = st.navigation(
@@ -3316,9 +3295,9 @@ with st.sidebar:
 
     st.divider()
 
-    # Quick theme toggle, right below the main nav — same settings.json source
-    # of truth as the Settings > Appearance page (via _write_settings), so
-    # whichever control was used last wins and both stay in sync.
+    # Theme toggle, right below the main nav — the only place theme is set now
+    # (the old Settings > Appearance page was removed once this existed).
+    # Persists via the same _write_settings path every settings page uses.
     _saved_theme_now = settings.get('theme', 'light')
     _dark_on = st.toggle(
         "🌙 Dark mode", value=(_saved_theme_now == 'dark'), key='sidebar_dark_toggle',

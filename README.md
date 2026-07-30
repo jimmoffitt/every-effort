@@ -6,7 +6,7 @@ I bike. A lot. So most of my own sense of "how's this year going" naturally come
 
 Everything else — the sport tabs, the year-over-year comparisons, the "Wrapped"-style summary — is really just a shell around that one number.
 
-A sidebar-driven Streamlit app: **View** pages for Bike, Snow, Swim, Running, and Hiking (pick which ones show up in Settings), a Combined cross-sport equity view, and a Wrapped-style summary; **Tools** for full-text activity search and data export; and a **Settings** area split into five focused sub-pages. Data syncs directly from the Strava API and is stored locally — nothing leaves your machine.
+A sidebar-driven Streamlit app: **View** pages for Bike, Snow, Swim, Running, and Hiking (pick which ones show up in Settings), a Combined cross-sport equity view, and a Wrapped-style summary; **Tools** for full-text activity search and data export; and a **Settings** area split into four focused sub-pages. Data syncs directly from the Strava API and is stored locally — nothing leaves your machine.
 
 **🚀 Live demo: [equity-miles.streamlit.app](https://equity-miles.streamlit.app/)** — a read-only build with a sanitized copy of the real dataset (see [How the demo works](#how-the-demo-works)). Works nicely on a phone too: open it in Safari and use Share → *Add to Home Screen*.
 
@@ -74,7 +74,7 @@ Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are man
 
 **Export** — annual summaries, monthly breakdowns, and a full activity table, each with PNG download and a combined ZIP.
 
-**Settings** — five focused sub-pages: **Sport equity** (conversion rates and the reference sport), **Goals** (annual/monthly/seasonal targets), **Seasons** (ski and swim season boundaries), **Map** (heatmap home location), and **Appearance** (theme, tab images). Each sub-page saves independently, merging its slice into `data/settings.json`.
+**Settings** — four focused sub-pages: **Sports** (which tabs show up, conversion rates, the reference sport, and each tab's default image), **Goals** (annual/monthly/seasonal targets), **Seasons** (ski and swim season boundaries), and **Map** (heatmap home location). Each sub-page saves independently, merging its slice into `data/settings.json`. Theme (dark/light) lives as a toggle in the sidebar itself, not in Settings.
 
 ---
 

@@ -20,9 +20,9 @@ A sidebar-driven Streamlit app: **View** pages for Bike, Snow, Swim, Running, an
 
 ### Multi-sport dashboard
 
-The sidebar reads top-to-bottom: **View** (the five sport/summary pages), **Data Sync** (archive count, last-sync age, and the Sync Now button), **Settings**, and **Tools**.
+The sidebar reads top-to-bottom: **View** (the five sport/summary pages), a Dark mode toggle, **Data Sync** (archive count, last-sync age, and the Sync Now button), **Settings**, **Tools**, and a link back to this repo at the bottom.
 
-![Sidebar View section — Bike, Snow, Swim, Combined, Wrapped](docs/screenshots/sidebar_tabs.png)
+![Sidebar View section — Bike, Snow, Swim, Combined, Wrapped Stories](docs/screenshots/sidebar_tabs.png)
 
 Each entry swaps the entire main panel for that page — no page reload, since it's all one Streamlit app. The screenshot at the top of this page is the **Snow** view, opened straight from that sidebar.
 
@@ -68,7 +68,7 @@ Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are man
 
 ### Other tabs
 
-**Wrapped** — pick any rolling window (last 365 days, last 30 days, a specific year or month) and a sport filter to get a period-in-review summary with charts and sport breakdown.
+**Wrapped Stories** — pick any rolling window (last 365 days, last 30 days, a specific year or month) and a sport filter to get a period-in-review summary: hero stats, top sports, monthly rhythm, an activity calendar, and a weekly-streak card. A "Play Wrapped Slides" button opens a swipeable story-card carousel for any calendar year, with an HTML download to share it outside the app.
 
 **Explore** — full-text search across all activities with date-range and sport-type filters. Results table with CSV download.
 

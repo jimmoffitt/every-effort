@@ -57,9 +57,27 @@ st.set_page_config(layout="wide", page_title="EveryMile")
 
 # ---------------------------------------------------------------------------
 # Data loading (cached)
+#
+# Every loader below takes an `mtime` argument purely so its value becomes
+# part of the @st.cache_data cache key (no leading underscore — that would
+# tell Streamlit to exclude it from hashing, the opposite of what's needed
+# here). Without it, a bare `@st.cache_data` function with no arguments
+# caches its result once per process and never re-reads the file again
+# — normally invisible locally (an explicit
+# `.clear()` call after every Sync Now covers it), but in DEMO_MODE nothing
+# ever calls `.clear()` (there's no live sync), so a demo redeploy that
+# updates data/demo/activities.json via a git-pull hot-reload was leaving
+# the *already-running* process serving whatever it first read at boot,
+# indefinitely — a real bug this exact pattern fixes. See _safe_mtime().
 # ---------------------------------------------------------------------------
+def _safe_mtime(path):
+    """File mtime, or 0.0 if it doesn't exist yet — safe to pass straight
+    into an @st.cache_data-decorated loader as its cache-busting argument."""
+    return os.path.getmtime(path) if os.path.exists(path) else 0.0
+
+
 @st.cache_data
-def load_activities():
+def load_activities(mtime):
     """
     Load the flat activity archive and merge any per-year JSON files whose
     year is NOT already represented in the main archive, then process.
@@ -102,7 +120,7 @@ def load_activities():
 
 
 @st.cache_data
-def load_athlete_profile():
+def load_athlete_profile(mtime):
     """Load athlete_profile.json (id, name, follower counts) written by
     run_pipeline.py / the Sync Now button — empty dict if never synced."""
     if os.path.exists(config.ATHLETE_PROFILE_FILE):
@@ -112,7 +130,7 @@ def load_athlete_profile():
 
 
 @st.cache_data
-def load_athlete_stats():
+def load_athlete_stats(mtime):
     """Load athlete_stats.json (Strava's own all-time/YTD/recent totals from
     /athletes/{id}/stats) — empty dict if never synced."""
     if os.path.exists(config.ATHLETE_STATS_FILE):
@@ -122,7 +140,7 @@ def load_athlete_stats():
 
 
 @st.cache_data
-def load_settings():
+def load_settings(mtime):
     """Load settings.json, falling back to defaults for any missing keys."""
     import copy
     settings = copy.deepcopy(config.DEFAULT_SETTINGS)
@@ -140,7 +158,7 @@ def load_settings():
 
 
 @st.cache_data
-def load_gear_map():
+def load_gear_map(mtime):
     """Load gear_map.json if it exists, merging GEAR_FALLBACKS as a baseline."""
     gear_map = dict(GEAR_FALLBACKS)
     path = config.GEAR_MAP_FILE
@@ -178,7 +196,7 @@ def _decode_polyline(s: str) -> list:
 
 
 @st.cache_data
-def load_bike_routes_all():
+def load_bike_routes_all(mtime):
     """Decode polylines for every bike activity in the raw archive.
 
     Returns a list of dicts with keys:
@@ -352,30 +370,48 @@ def _section_toc(items, color):
 
 def _apply_theme_js(theme: str) -> None:
     """Push a theme preference ('dark' or 'light') into Streamlit's localStorage
-    and reload the parent page so Streamlit picks it up natively. Only triggers
-    a reload when the cached theme doesn't already match the requested one —
+    and reload the top page so Streamlit picks it up natively. Only triggers a
+    reload when the cached theme doesn't already match the requested one —
     and even then, at most ONCE per browser tab per path, via a sessionStorage
-    guard. sessionStorage (unlike anything tracked in Python's session_state)
+    guard (sessionStorage, unlike anything tracked in Python's session_state,
     is guaranteed to survive the reload itself, so this caps the damage to one
-    attempt no matter what the server does. Without it: on Streamlit Community
-    Cloud, this was observed reloading in an infinite loop — the mismatch check
-    below never resolved (root cause not fully pinned down; a session/proxy
-    quirk on that host is suspected) and the page reran forever with no
-    Python exception ever raised, making the whole app unusable."""
+    attempt no matter what the server does — see the infinite-reload-loop
+    history below).
+
+    Uses `window.top`, not `window.parent`. This component itself always
+    renders inside its own sandboxed iframe, so `window.parent` from inside
+    it is "one level up" — which is the true top-level page when running
+    locally (`streamlit run`), but on Streamlit Community Cloud the app is
+    ALSO served inside its own wrapper iframe (the page showing Deploy/Share/
+    Manage-app chrome around it), so `window.parent` there only reaches that
+    intermediate app-iframe, not the real top page Streamlit's own frontend
+    reads its theme from. `window.top` always resolves to the true outermost
+    browsing context regardless of nesting depth, so it's correct in both
+    environments. This was the actual root cause of a bug where the sidebar
+    toggle showed one theme while the page rendered another, permanently and
+    unrecoverably, on the deployed demo specifically (never locally) — the
+    write landed in the wrong (or an inaccessible/partitioned) scope, the
+    localStorage entry never took, but the sessionStorage guard was set
+    regardless, so the circuit breaker below correctly prevented an infinite
+    loop but also then prevented the (silently failed) sync from ever being
+    retried. Before this fix, `window.parent` was *also* the reason an
+    earlier version of this function could reload forever on Community Cloud
+    with no Python exception ever raised — same nesting mismatch, different
+    symptom depending on exactly how the mismatched scope behaved."""
     name = 'Dark' if theme == 'dark' else 'Light'
     js = f"""
     <script>
     (function() {{
-        var key = 'stActiveTheme-' + window.parent.location.pathname + '-v1';
-        var guardKey = 'eqmThemeSyncAttempted-' + window.parent.location.pathname;
-        var raw = window.parent.localStorage.getItem(key);
+        var key = 'stActiveTheme-' + window.top.location.pathname + '-v1';
+        var guardKey = 'eqmThemeSyncAttempted-' + window.top.location.pathname;
+        var raw = window.top.localStorage.getItem(key);
         var cur = null;
         try {{ cur = JSON.parse(raw).name; }} catch(e) {{}}
         if (cur !== '{name}') {{
-            if (window.parent.sessionStorage.getItem(guardKey) === '{name}') return;
-            window.parent.sessionStorage.setItem(guardKey, '{name}');
-            window.parent.localStorage.setItem(key, JSON.stringify({{name: '{name}'}}));
-            window.parent.location.reload();
+            if (window.top.sessionStorage.getItem(guardKey) === '{name}') return;
+            window.top.sessionStorage.setItem(guardKey, '{name}');
+            window.top.localStorage.setItem(key, JSON.stringify({{name: '{name}'}}));
+            window.top.location.reload();
         }}
     }})();
     </script>
@@ -640,7 +676,7 @@ def render_bike_heatmap_view(compact: bool = False):
     )
     days = frames[frame]
 
-    all_routes = load_bike_routes_all()
+    all_routes = load_bike_routes_all(_safe_mtime(config.ACTIVITIES_FILE))
 
     if days is not None:
         cutoff = _datetime.now(_timezone.utc) - timedelta(days=days)
@@ -652,7 +688,7 @@ def render_bike_heatmap_view(compact: bool = False):
         st.info("No rides in the selected window.")
         return
 
-    _home = load_settings().get('home_location', {})
+    _home = load_settings(_safe_mtime(config.SETTINGS_FILE)).get('home_location', {})
     if _home.get('enabled') and _home.get('lat') is not None and _home.get('lon') is not None:
         center_lat, center_lon = float(_home['lat']), float(_home['lon'])
     else:
@@ -3195,10 +3231,10 @@ def render_settings_section(settings, section):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-df = load_activities()
-gear_map = load_gear_map()
-settings = load_settings()
-athlete_profile = load_athlete_profile()
+df = load_activities(_safe_mtime(config.ACTIVITIES_FILE))
+gear_map = load_gear_map(_safe_mtime(config.GEAR_MAP_FILE))
+settings = load_settings(_safe_mtime(config.SETTINGS_FILE))
+athlete_profile = load_athlete_profile(_safe_mtime(config.ATHLETE_PROFILE_FILE))
 
 if df.empty:
     st.error("No activity data found. Run the pipeline first.")

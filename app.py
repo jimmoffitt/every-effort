@@ -3250,23 +3250,6 @@ swim_df  = df[df['final_type'].isin(SWIM_TYPES)  & ~_eq_mask].copy()
 run_df   = df[df['final_type'].isin(RUN_TYPES)   & ~_eq_mask].copy()
 hike_df  = df[df['final_type'].isin(HIKE_TYPES)  & ~_eq_mask].copy()
 
-# On first render of each PAGE (not just each browser session), sync
-# localStorage to the saved theme preference. Streamlit's own theme choice is
-# stored per URL path (see _apply_theme_js's 'stActiveTheme-<pathname>-v1' key),
-# so a once-per-session guard here would only ever sync whichever page happened
-# to load first — every other page's first visit in that session would fall
-# back to Streamlit's own default (light) instead of the saved setting. Once a
-# given path has been synced, subsequent reruns on that same path skip this, so
-# the user can still override via Streamlit's native ⋮ Settings menu without it
-# snapping back.
-_synced_paths = st.session_state.setdefault('_theme_synced_paths', set())
-if st.context.url not in _synced_paths:
-    _synced_paths.add(st.context.url)
-    _saved_theme = settings.get('theme', 'light')
-    _current_theme = st.context.theme.type or 'light'
-    if _saved_theme != _current_theme:
-        _apply_theme_js(_saved_theme)
-
 # ---------------------------------------------------------------------------
 # Sidebar navigation — native st.navigation with a hand-built sidebar, mirroring
 # the spotify-stats layout. Page selection survives reruns (no tab snap-back),
@@ -3344,6 +3327,31 @@ pg = st.navigation(
     {"View": _view_pages, "Tools": _tools_pages, "Settings": _settings_pages},
     position="hidden",
 )
+
+# On first render of each PAGE (not just each browser session), sync
+# localStorage to the saved theme preference. Streamlit's own theme choice is
+# stored per URL path (see _apply_theme_js's 'stActiveTheme-<pathname>-v1'
+# key), so a once-per-session guard would only ever sync whichever page
+# happened to load first — every other page's first visit that session would
+# fall back to Streamlit's own default (light) instead of the saved setting.
+#
+# Keyed on `pg.url_path` (the currently-active st.Page), NOT `st.context.url`.
+# This used to key on st.context.url, which seemed right (and tested fine
+# for genuine fresh page loads) but turned out not to update on an internal
+# st.navigation page switch (clicking a different sidebar entry within an
+# already-open session) — only on an actual new HTTP request. That silently
+# broke the "once per page" guard: every sidebar click after the first page
+# was incorrectly treated as "already synced" and skipped, so only the very
+# first page a session ever loaded got its theme corrected. pg.url_path is
+# resolved fresh by st.navigation() on every rerun regardless of how the page
+# switch happened, so it doesn't have this gap.
+_synced_paths = st.session_state.setdefault('_theme_synced_paths', set())
+if pg.url_path not in _synced_paths:
+    _synced_paths.add(pg.url_path)
+    _saved_theme = settings.get('theme', 'light')
+    _current_theme = st.context.theme.type or 'light'
+    if _saved_theme != _current_theme:
+        _apply_theme_js(_saved_theme)
 
 with st.sidebar:
     _sidebar_dark = st.context.theme.type == 'dark'

@@ -1388,3 +1388,51 @@ def build_daily_totals(df, max_days=371):
     daily['weekday']  = daily['date'].apply(lambda x: x.weekday())
     daily['week_idx'] = daily['date'].apply(lambda x: (x - start).days // 7)
     return daily[cols]
+
+
+def build_weekly_activity(df, max_weeks=52):
+    """Per-ISO-week active/inactive flags for a weekly-streak grid, clipped to
+    the trailing ``max_weeks`` of the filtered range (mirrors build_daily_totals'
+    clipping so a multi-year 'All time' selection doesn't produce hundreds of
+    cells). Returns columns: week_start (Monday date), active (bool), count —
+    every week in range is present, zero-filled where there's no activity."""
+    cols = ['week_start', 'active', 'count']
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+
+    d = df.copy()
+    d['_date'] = d['start_date_local'].dt.date
+    d['_week_start'] = d['_date'].apply(lambda x: x - timedelta(days=x.weekday()))
+
+    end_week = d['_week_start'].max()
+    start_week = max(d['_week_start'].min(), end_week - timedelta(weeks=max_weeks - 1))
+    d = d[d['_week_start'] >= start_week]
+
+    weekly = d.groupby('_week_start').agg(count=('id', 'count'))
+    all_weeks = pd.date_range(start_week, end_week, freq='7D').date
+    weekly = weekly.reindex(all_weeks, fill_value=0).rename_axis('week_start').reset_index()
+    weekly['active'] = weekly['count'] > 0
+    return weekly[cols]
+
+
+def compute_weekly_streak(weekly_df):
+    """Longest run of consecutive active weeks in ``weekly_df`` (as returned by
+    build_weekly_activity). Returns {length, start, end} — start/end are the
+    Monday of the streak's first/last active week, or None if no active week
+    exists in range."""
+    result = {'length': 0, 'start': None, 'end': None}
+    if weekly_df.empty:
+        return result
+
+    run_start = None
+    run_len = 0
+    for _, row in weekly_df.iterrows():
+        if row['active']:
+            if run_len == 0:
+                run_start = row['week_start']
+            run_len += 1
+            if run_len > result['length']:
+                result = {'length': run_len, 'start': run_start, 'end': row['week_start']}
+        else:
+            run_len = 0
+    return result

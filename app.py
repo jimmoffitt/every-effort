@@ -1810,6 +1810,93 @@ def _wrapped_cards(items, cols=4):
         columns[i % cols].markdown(html, unsafe_allow_html=True)
 
 
+_SPORT_ICONS = {
+    'bike': '🚴', 'swim': '🏊', 'ski': '⛷️', 'run': '🏃',
+    'hike': '🥾', 'paddle': '🛶', 'custom': '🏅',
+}
+
+
+def _wrapped_top_sports(bucket_df, unit_label='mi', n=4):
+    """Ranked list card of top sports by distance — rank, icon, label, bold
+    value. A distinct presentation from the donut (which carries sport
+    color-identity for cross-chart consistency); this is the Strava-Wrapped-
+    style ranked reveal instead."""
+    if bucket_df.empty:
+        return
+    dark = st.context.theme.type == 'dark'
+    bg = '#21232b' if dark else '#fffaf7'
+    value_color = '#f0f0f0' if dark else '#1f1f1f'
+    rank_color = '#7d8590' if dark else '#9a8478'
+
+    ranked = bucket_df.sort_values('miles', ascending=False).head(n).reset_index(drop=True)
+    rows = ''
+    for i, row in enumerate(ranked.itertuples(), start=1):
+        icon = _SPORT_ICONS.get(row.bucket, '🏅')
+        border = ('border-bottom:1px solid rgba(128,128,128,0.15);'
+                   if i < len(ranked) else '')
+        # Single-line, no embedded newlines — a blank line between rows would
+        # end the raw-HTML block and drop the rest into a markdown code block.
+        rows += (
+            f'<div style="display:flex;align-items:center;gap:12px;padding:10px 0;{border}">'
+            f'<div style="font-size:14px;font-weight:700;color:{rank_color};width:18px">{i}</div>'
+            f'<div style="font-size:22px">{icon}</div>'
+            f'<div style="flex:1;font-size:15px;color:{value_color}">{row.label}</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{value_color}">{row.miles:,.0f} {unit_label}</div>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div style="background:{bg};border-radius:12px;padding:8px 20px;margin-bottom:12px">{rows}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _wrapped_streak_card(weekly_df, streak):
+    """Weekly-streak reveal — a circular streak-length badge, the streak's
+    date range, and a week-by-week checkmark grid (filled = active week), with
+    the longest streak's weeks ringed in the accent color."""
+    if weekly_df.empty or streak['length'] == 0:
+        return
+    dark = st.context.theme.type == 'dark'
+    bg = '#21232b' if dark else '#fffaf7'
+    text_color = '#f0f0f0' if dark else '#1f1f1f'
+    muted = '#3a3d46' if dark else '#e8ded8'
+
+    def _fmt(d):
+        return d.strftime('%b ') + str(d.day) + d.strftime(', %Y')
+
+    start_label = _fmt(streak['start'])
+    end_label = _fmt(streak['end'] + timedelta(days=6))
+    in_streak = set(pd.date_range(streak['start'], streak['end'], freq='7D').date)
+
+    cells = ''
+    for row in weekly_df.itertuples():
+        fill = STRAVA_ORANGE if row.active else muted
+        ring = f'box-shadow:0 0 0 2px {STRAVA_ORANGE};' if row.week_start in in_streak else ''
+        mark = '✓' if row.active else ''
+        cells += (
+            f'<div style="width:20px;height:20px;border-radius:50%;background:{fill};{ring}'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'font-size:10px;color:#fff;flex:0 0 auto">{mark}</div>'
+        )
+
+    html = f'''
+    <div style="background:{bg};border-radius:16px;padding:24px;text-align:center;margin-bottom:12px">
+      <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
+                  color:{text_color};opacity:0.7">Longest Weekly Streak</div>
+      <div style="width:120px;height:120px;border-radius:50%;border:6px solid {STRAVA_ORANGE};
+                  display:flex;flex-direction:column;align-items:center;justify-content:center;
+                  margin:12px auto">
+        <div style="font-size:40px;font-weight:800;color:{text_color}">{streak['length']}</div>
+        <div style="font-size:11px;letter-spacing:0.05em;text-transform:uppercase;
+                    color:{text_color};opacity:0.7">weeks</div>
+      </div>
+      <div style="font-size:13px;color:{text_color};opacity:0.7;margin-top:8px">{start_label} – {end_label}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:16px">{cells}</div>
+    </div>
+    '''
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def _wrapped_legend_strip(label_low="Less", label_high="More"):
     """Small 'Less -> More' swatch key for the calendar heatmap."""
     dark = st.context.theme.type == 'dark'
@@ -1936,6 +2023,12 @@ def render_wrapped_tab(df, settings, athlete_profile):
                 make_sport_breakdown_chart(stats['sport_breakdown'], 'miles', 'Miles'),
             )
 
+    # --- Top Sports (ranked list, distinct from the donut above) ---
+    if len(bucket_df) > 1:
+        st.divider()
+        st.subheader("Top Sports")
+        _wrapped_top_sports(bucket_df, 'mi')
+
     st.divider()
 
     # --- Activity calendar ---
@@ -1947,6 +2040,18 @@ def render_wrapped_tab(df, settings, athlete_profile):
                   - filtered['start_date_local'].dt.date.min()).days + 1
     if _span_days > 371:
         st.caption("Showing the most recent 365 days of the selected period.")
+
+    st.divider()
+
+    # --- Weekly streak ---
+    st.subheader("Longest Weekly Streak")
+    weekly_activity = process_data.build_weekly_activity(filtered)
+    weekly_streak = process_data.compute_weekly_streak(weekly_activity)
+    _wrapped_streak_card(weekly_activity, weekly_streak)
+    _span_weeks = len(weekly_activity)
+    if _span_weeks and (filtered['start_date_local'].dt.date.max()
+                         - filtered['start_date_local'].dt.date.min()).days + 1 > _span_weeks * 7:
+        st.caption("Showing the most recent 52 weeks of the selected period.")
 
     st.divider()
 

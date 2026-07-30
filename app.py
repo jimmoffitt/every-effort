@@ -352,17 +352,28 @@ def _section_toc(items, color):
 
 def _apply_theme_js(theme: str) -> None:
     """Push a theme preference ('dark' or 'light') into Streamlit's localStorage
-    and reload the parent page so Streamlit picks it up natively.  Only triggers
-    a reload when the cached theme doesn't already match the requested one."""
+    and reload the parent page so Streamlit picks it up natively. Only triggers
+    a reload when the cached theme doesn't already match the requested one —
+    and even then, at most ONCE per browser tab per path, via a sessionStorage
+    guard. sessionStorage (unlike anything tracked in Python's session_state)
+    is guaranteed to survive the reload itself, so this caps the damage to one
+    attempt no matter what the server does. Without it: on Streamlit Community
+    Cloud, this was observed reloading in an infinite loop — the mismatch check
+    below never resolved (root cause not fully pinned down; a session/proxy
+    quirk on that host is suspected) and the page reran forever with no
+    Python exception ever raised, making the whole app unusable."""
     name = 'Dark' if theme == 'dark' else 'Light'
     js = f"""
     <script>
     (function() {{
         var key = 'stActiveTheme-' + window.parent.location.pathname + '-v1';
+        var guardKey = 'eqmThemeSyncAttempted-' + window.parent.location.pathname;
         var raw = window.parent.localStorage.getItem(key);
         var cur = null;
         try {{ cur = JSON.parse(raw).name; }} catch(e) {{}}
         if (cur !== '{name}') {{
+            if (window.parent.sessionStorage.getItem(guardKey) === '{name}') return;
+            window.parent.sessionStorage.setItem(guardKey, '{name}');
             window.parent.localStorage.setItem(key, JSON.stringify({{name: '{name}'}}));
             window.parent.location.reload();
         }}

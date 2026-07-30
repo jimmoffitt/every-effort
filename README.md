@@ -1,4 +1,4 @@
-# Equity Miles
+# EveryMile
 
 *A personal Strava dashboard for people who ride, ski, swim, run, and hike — and want one overall measurement for how their year is actually going.*
 
@@ -8,11 +8,11 @@ Everything else — the sport tabs, the year-over-year comparisons, the "Wrapped
 
 A sidebar-driven Streamlit app: **View** pages for Bike, Snow, Swim, Running, and Hiking (pick which ones show up in Settings), a Combined cross-sport equity view, and a Wrapped-style summary; **Tools** for full-text activity search and data export; and a **Settings** area split into four focused sub-pages. Data syncs directly from the Strava API and is stored locally — nothing leaves your machine.
 
-**🚀 Live demo: [equity-miles.streamlit.app](https://equity-miles.streamlit.app/)** — a read-only build with a sanitized copy of the real dataset (see [How the demo works](#how-the-demo-works)). Works nicely on a phone too: open it in Safari and use Share → *Add to Home Screen*.
+**🚀 Live demo: [every-mile.streamlit.app](https://every-mile.streamlit.app/)** — a read-only build with a sanitized copy of the real dataset (see [How the demo works](#how-the-demo-works)). Works nicely on a phone too: open it in Safari and use Share → *Add to Home Screen*.
 
 > **Not affiliated with, endorsed by, or sponsored by Strava.** This is an independent, unofficial project built against Strava's public API. "Strava" and the Strava logo are trademarks of Strava, Inc.
 
-![Equity Miles dashboard — Snow tab](docs/screenshots/snow_tab.png)
+![EveryMile dashboard — Snow tab](docs/screenshots/snow_tab.png)
 
 ---
 
@@ -80,7 +80,7 @@ Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are man
 
 ## Developer documentation
 
-This repository contains the code and content needed to deploy your own Equity Miles app. This app was built as a Streamlit service.
+This repository contains the code and content needed to deploy your own EveryMile app. This app was built as a Streamlit service.
 
 ### Quick start
 
@@ -111,7 +111,7 @@ After the first run, use the **Sync Now** button in the sidebar for incremental 
 
 ### How the demo works
 
-The [live demo](https://equity-miles.streamlit.app/) is the same app in a read-only **demo mode**, deployed on [Streamlit Community Cloud](https://share.streamlit.io) with no credentials on the host.
+The [live demo](https://every-mile.streamlit.app/) is the same app in a read-only **demo mode**, deployed on [Streamlit Community Cloud](https://share.streamlit.io) with no credentials on the host.
 
 **Sanitized dataset.** The real activity archive is gitignored (it contains heart rate, power, device, and precise location data). `make_demo_data.py` derives a committable copy at `data/demo/activities.json` by whitelisting only the ~14 fields the app actually reads — id, name, type, dates, distance, times, elevation, gear id, and a couple of counts — plus each ride's `map.summary_polyline`, kept by choice so the bike heatmap renders with real routes in the demo. Exact start/end coordinates, heart rate, power, device names, and location strings are all dropped. A copy of the gear map rides along so bike names render.
 

@@ -3306,16 +3306,15 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<h2 style='margin:0 0 0.2rem 0;color:#FC4C02'>Equity Miles</h2>"
-        "<a href='https://github.com/jimmoffitt/strava-stats' target='_blank' "
-        "style='font-size:13px;text-decoration:none;color:inherit;opacity:0.75'>"
-        "&#128279; View source on GitHub</a>",
+        "<h2 style='margin:0 0 0.2rem 0;color:#FC4C02'>Equity Miles</h2>",
         unsafe_allow_html=True,
     )
     st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)
     st.markdown("**View**")
     for _p in _view_pages:
         st.page_link(_p)
+
+    st.divider()
 
     # Quick theme toggle, right below the main nav — same settings.json source
     # of truth as the Settings > Appearance page (via _write_settings), so
@@ -3340,6 +3339,14 @@ with st.sidebar:
     st.markdown("**Tools**")
     for _p in _tools_pages:
         st.page_link(_p)
+
+    st.divider()
+    st.markdown(
+        "<a href='https://github.com/jimmoffitt/strava-stats' target='_blank' "
+        "style='font-size:13px;text-decoration:none;color:inherit;opacity:0.75'>"
+        "&#128279; View source on GitHub</a>",
+        unsafe_allow_html=True,
+    )
 
     # Selecting a page link on mobile leaves the sidebar covering the whole
     # screen with no obvious next step. Auto-collapse it after navigation,

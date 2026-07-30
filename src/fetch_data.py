@@ -7,12 +7,102 @@ point is maintain_archive(), which fetches any missing years in full and
 does an incremental update for the current year only — keeping API calls
 minimal on subsequent runs. Called by run_pipeline.py and by app.py's
 Sync Now button.
+
+Every HTTP call to Strava goes through _strava_request(), which retries
+rate limits (429) and transient server errors (5xx) with backoff, and
+raises a typed exception (StravaRateLimitError / StravaAuthError /
+StravaAPIError) rather than silently returning an empty result when a
+call ultimately fails. That distinction matters most in _fetch_pages():
+without it, a rate-limited page in the middle of pagination is
+indistinguishable from a legitimate "no more activities" empty page, and
+a sync can silently leave the archive incomplete with no indication
+anything went wrong.
 """
 import json
 import time
 import requests
 import os
 from datetime import datetime
+
+
+class StravaAPIError(Exception):
+    """Raised when a Strava API call fails after retries are exhausted."""
+
+
+class StravaRateLimitError(StravaAPIError):
+    """Raised when Strava's rate limit (429) is hit and retries are exhausted."""
+
+
+class StravaAuthError(StravaAPIError):
+    """Raised on a 401 — the access token is invalid even after refreshing,
+    most likely because the refresh token itself was revoked."""
+
+
+def _strava_request(method, url, *, max_retries=2, **kwargs):
+    """Shared HTTP wrapper for every Strava API call. Retries 429s and 5xx
+    responses with backoff (short waits — this is called from an interactive
+    Streamlit button as well as the CLI pipeline, so it shouldn't block for
+    minutes); raises a clear, typed exception on anything else, or once
+    retries are exhausted, instead of leaving the caller to interpret a
+    falsy/empty result as "nothing to do"."""
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.request(method, url, timeout=30, **kwargs)
+        except requests.RequestException as e:
+            last_exc = e
+            if attempt < max_retries:
+                wait = 2 * (attempt + 1)
+                print(f"   [WARN] Network error ({e}); retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            raise StravaAPIError(f"Network error calling {url}: {e}") from e
+
+        if response.status_code == 200:
+            return response
+
+        if response.status_code == 429:
+            usage = response.headers.get('X-RateLimit-Usage', '?')
+            limit = response.headers.get('X-RateLimit-Limit', '?')
+            if attempt < max_retries:
+                wait = 10 * (attempt + 1) ** 2  # 10s, then 40s
+                print(f"   [WARN] Strava rate limit hit (usage {usage} / "
+                      f"limit {limit}). Waiting {wait}s before retry "
+                      f"{attempt + 1}/{max_retries}...")
+                time.sleep(wait)
+                continue
+            raise StravaRateLimitError(
+                f"Strava rate limit exceeded (usage {usage} / limit {limit}) "
+                f"after {max_retries} retries. Wait a while and try again."
+            )
+
+        if response.status_code == 401:
+            raise StravaAuthError(
+                "Strava rejected the access token (401), even after a "
+                "refresh attempt — the refresh token itself may have been "
+                "revoked. Re-run src/setup_tokens.py to re-authenticate."
+            )
+
+        if response.status_code >= 500:
+            if attempt < max_retries:
+                wait = 2 * (attempt + 1)
+                print(f"   [WARN] Strava server error ({response.status_code}); "
+                      f"retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            raise StravaAPIError(
+                f"Strava server error {response.status_code} after "
+                f"{max_retries} retries: {response.text[:200]}"
+            )
+
+        # Any other status (400, 403, 404, …) isn't retryable.
+        raise StravaAPIError(
+            f"Strava API error {response.status_code} calling {url}: "
+            f"{response.text[:200]}"
+        )
+
+    raise StravaAPIError(f"Failed calling {url}") from last_exc
+
 
 # --- Authentication ---
 def get_access_token(token_file, client_id, client_secret):
@@ -28,8 +118,8 @@ def get_access_token(token_file, client_id, client_secret):
 
     if tokens['expires_at'] < time.time() + 300:
         print("Token expired. Refreshing...")
-        response = requests.post(
-            url='https://www.strava.com/api/v3/oauth/token',
+        response = _strava_request(
+            'POST', 'https://www.strava.com/api/v3/oauth/token',
             data={
                 'client_id': client_id,
                 'client_secret': client_secret,
@@ -37,8 +127,6 @@ def get_access_token(token_file, client_id, client_secret):
                 'refresh_token': tokens['refresh_token']
             }
         )
-        if response.status_code != 200:
-            raise ConnectionError(f"Error refreshing token: {response.json()}")
         tokens.update(response.json())
         with open(token_file, 'w') as f:
             json.dump(tokens, f)
@@ -48,10 +136,14 @@ def fetch_active_gear(access_token):
     """Fetch the athlete's bikes and shoes and return one flat {gear_id: name}
     map covering both. Merged with config.GEAR_FALLBACKS by the caller so
     retired gear (no longer returned by this endpoint but still referenced by
-    old activities) still resolves to a name."""
+    old activities) still resolves to a name. Supplementary data — soft-fails
+    to {} (after retries) rather than aborting the whole sync over it."""
     url = "https://www.strava.com/api/v3/athlete"
-    response = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
-    if response.status_code != 200: return {}
+    try:
+        response = _strava_request('GET', url, headers={'Authorization': f"Bearer {access_token}"})
+    except StravaAPIError as e:
+        print(f"   [WARN] Could not fetch gear: {e}")
+        return {}
     data = response.json()
     gear_map = {}
     for bike in data.get('bikes', []): gear_map[bike['id']] = bike['name']
@@ -60,10 +152,14 @@ def fetch_active_gear(access_token):
 
 
 def fetch_athlete_profile(access_token):
-    """Fetch athlete profile — id, name, location, follower/following counts."""
+    """Fetch athlete profile — id, name, location, follower/following counts.
+    Supplementary data — soft-fails to {} (after retries) rather than
+    aborting the whole sync over it."""
     url = "https://www.strava.com/api/v3/athlete"
-    response = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
-    if response.status_code != 200:
+    try:
+        response = _strava_request('GET', url, headers={'Authorization': f"Bearer {access_token}"})
+    except StravaAPIError as e:
+        print(f"   [WARN] Could not fetch athlete profile: {e}")
         return {}
     data = response.json()
     return {
@@ -78,10 +174,14 @@ def fetch_athlete_profile(access_token):
 
 
 def fetch_athlete_stats(access_token, athlete_id):
-    """Fetch all-time, YTD, and recent totals from /athletes/{id}/stats."""
+    """Fetch all-time, YTD, and recent totals from /athletes/{id}/stats.
+    Supplementary data — soft-fails to {} (after retries) rather than
+    aborting the whole sync over it."""
     url = f"https://www.strava.com/api/v3/athletes/{athlete_id}/stats"
-    response = requests.get(url, headers={'Authorization': f"Bearer {access_token}"})
-    if response.status_code != 200:
+    try:
+        response = _strava_request('GET', url, headers={'Authorization': f"Bearer {access_token}"})
+    except StravaAPIError as e:
+        print(f"   [WARN] Could not fetch athlete stats: {e}")
         return {}
     return response.json()
 
@@ -198,17 +298,25 @@ def _fetch_pages(access_token, after_ts, before_ts):
     """Page through GET /athlete/activities for [after_ts, before_ts), 200
     per page (Strava's max) until a page comes back empty. Note this always
     issues one extra request past the last page of real data to confirm
-    there's nothing left."""
+    there's nothing left.
+
+    Deliberately does NOT catch StravaAPIError here — a failed page (rate
+    limit exhausted, server error, …) must never be treated the same as a
+    legitimate empty page. Silently breaking on either would make a
+    partial, incomplete fetch indistinguishable from "that's everything,"
+    and the archive would end up quietly missing activities with no sign
+    anything went wrong. Callers (maintain_archive, and above that
+    run_pipeline.py / app.py's Sync Now) are responsible for surfacing the
+    error instead."""
     activities = []
     page = 1
     while True:
         params = {'per_page': 200, 'page': page, 'after': int(after_ts), 'before': int(before_ts)}
-        response = requests.get(
-            "https://www.strava.com/api/v3/athlete/activities", 
-            headers={'Authorization': f"Bearer {access_token}"}, 
+        response = _strava_request(
+            'GET', "https://www.strava.com/api/v3/athlete/activities",
+            headers={'Authorization': f"Bearer {access_token}"},
             params=params
         )
-        if response.status_code != 200: break
         data = response.json()
         if not data: break
         activities.extend(data)

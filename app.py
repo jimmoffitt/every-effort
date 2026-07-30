@@ -2665,7 +2665,13 @@ def _run_sync():
                 "Run `python run_pipeline.py` once from the terminal to complete "
                 "the initial Strava OAuth flow and create the token file."
             )
-        except ConnectionError as exc:
+        except _fd.StravaRateLimitError as exc:
+            status.update(label="❌ Strava rate limit hit", state="error")
+            st.error(str(exc))
+        except _fd.StravaAuthError as exc:
+            status.update(label="❌ Strava authentication failed", state="error")
+            st.error(str(exc))
+        except _fd.StravaAPIError as exc:
             status.update(label="❌ Strava API error", state="error")
             st.error(str(exc))
         except Exception as exc:

@@ -7,10 +7,11 @@ valid access token in hand.
 
 ## Endpoints this app actually uses
 
-All calls are plain `requests.get`/`.post` against Strava's REST v3 API
-(`https://www.strava.com/api/v3/...`) — no SDK, no wrapper library, just
-`Authorization: Bearer <access_token>` headers. Everything lives in
-`src/fetch_data.py`.
+All calls go through one shared `_strava_request()` helper against Strava's
+REST v3 API (`https://www.strava.com/api/v3/...`) — no SDK, no wrapper
+library, just `Authorization: Bearer <access_token>` headers plus retry and
+error handling (see "Rate limits and error handling" below). Everything
+lives in `src/fetch_data.py`.
 
 | Endpoint | Used for | Called from |
 |---|---|---|
@@ -28,9 +29,15 @@ on your Strava account).
 
 `GET /athlete/activities` is paginated, `per_page` capped at **200** (Strava's
 max) and `page`-indexed. `_fetch_pages()` just keeps requesting pages and
-extending a list until a page comes back empty — including one guaranteed
-extra request past the real last page, just to confirm there's nothing left.
-Simple and correct, at the cost of one always-wasted request per fetch.
+extending a list until a page comes back genuinely empty — including one
+guaranteed extra request past the real last page, just to confirm there's
+nothing left. Simple and correct, at the cost of one always-wasted request
+per fetch.
+
+A failed page (rate limit, server error) is deliberately **not** treated the
+same as an empty page — `_strava_request()` raises rather than returning a
+falsy result, so a mid-sync failure can never look identical to "that's
+everything." See "Rate limits and error handling" below.
 
 The interesting part is `maintain_archive()`'s per-year strategy, since it's
 what keeps ongoing syncs cheap:
@@ -57,7 +64,7 @@ dedupes by activity `id` before extending the in-memory list, so this is
 handled — but it's worth knowing the boundary isn't guaranteed
 non-overlapping by construction.
 
-## Rate limits — a real gap, not a solved problem
+## Rate limits and error handling
 
 Strava's API enforces both a 15-minute and a daily request cap per
 application (the exact numbers have changed over time and depend on your
@@ -66,15 +73,54 @@ app's approval tier — check your app's settings at
 [current developer docs](https://developers.strava.com/docs/rate-limits/)
 for your actual limits, don't hardcode a number here as gospel).
 
-**This codebase does not check for or handle rate limiting at all.** There's
-no read of the `X-RateLimit-Limit`/`X-RateLimit-Usage` response headers, no
-backoff on a `429`, no retry logic — `_fetch_pages()` and the other fetch
-functions just check for a non-200 status and silently stop or return empty.
-In practice this hasn't mattered because a single personal account's sync
-volume sits nowhere near the limits, but it's a real gap if this ever needs
-to run more frequently, against more accounts, or during a large historical
-backfill (many-year initial sync = many pages = many requests in a short
-window).
+**Every call goes through `_strava_request()`**, a shared wrapper that
+retries and raises typed exceptions instead of the old behavior (a bare
+non-200 check that silently stopped or returned `{}`/`[]` with no
+indication anything had gone wrong):
+
+| Response | Behavior |
+|---|---|
+| `429` (rate limited) | Retries with backoff (10s, then 40s by default), reading `X-RateLimit-Usage`/`X-RateLimit-Limit` into the log message. Raises `StravaRateLimitError` if still failing after retries. |
+| `401` (bad token) | Raises `StravaAuthError` immediately — no retry, since retrying with the same rejected token can't help. Points at re-running `src/setup_tokens.py`. |
+| `5xx` (server error) | Retries with a short backoff (2s, 4s, …), then raises `StravaAPIError`. |
+| Network exception (timeout, DNS, …) | Same short-backoff retry, then raises `StravaAPIError`. |
+| Anything else (`400`, `403`, `404`, …) | Not retried — raises `StravaAPIError` immediately with the response body included. |
+
+All three exception classes (`StravaRateLimitError`, `StravaAuthError`,
+`StravaAPIError` — the first two subclass the third) live in
+`src/fetch_data.py`. `app.py`'s Sync Now button catches them specifically to
+show a clear status message instead of a raw traceback; `run_pipeline.py`
+catches the base class around both the profile/gear/stats setup step and the
+archive sync step for the same reason on the CLI side.
+
+**Two different failure postures, by design:**
+- `fetch_athlete_profile()`, `fetch_active_gear()`, and `fetch_athlete_stats()`
+  are supplementary — they catch `StravaAPIError` locally and soft-fail back
+  to `{}` (after retries), printing a `[WARN]` line, rather than aborting the
+  whole sync over secondary data.
+- `_fetch_pages()` — the activity archive itself — does **not** catch
+  anything. An unrecoverable failure propagates all the way up, because a
+  partial, silently-truncated archive is worse than a sync that visibly
+  failed and can just be retried. One consequence worth knowing:
+  `maintain_archive()` only writes the archive file once, after every
+  requested year succeeds — a failure partway through a large multi-year
+  backfill discards that run's progress rather than saving a partial
+  result. Safe (nothing corrupts), but not resumable mid-run; just retry the
+  whole sync.
+
+Retry waits are intentionally short (tens of seconds, not the full 15-minute
+window) — this is called from an interactive Streamlit button as well as the
+CLI, and a routine sync blocking for minutes would look broken to a user
+even though it's technically "working as designed."
+
+What's still *not* handled: proactive throttling ahead of hitting a 429 (no
+read of rate-limit headers on a *successful* response to slow down before
+the limit is hit), and there's no queuing if multiple syncs somehow overlap.
+Fine for today's single-user, click-Sync-Now-occasionally usage; would need
+revisiting for anything higher-volume (see
+[FUTURE_MULTI_TENANT.md](FUTURE_MULTI_TENANT.md)'s note on rate limits
+becoming a genuinely shared, contended resource in a hosted multi-tenant
+setup).
 
 ## Data model quirks worth knowing
 

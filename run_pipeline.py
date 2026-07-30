@@ -45,13 +45,20 @@ def main():
         sys.exit(1)
 
     # 2. Maintain Archive & Get Relevant Data
-    # This will update 'my_strava_activities.json' if needed, 
+    # This will update 'my_strava_activities.json' if needed,
     # and return ONLY the activities matching STRAVA_YEARS
-    activities = fetch_data.maintain_archive(
-        access_token=token, 
-        archive_file=config.ACTIVITIES_FILE, 
-        target_years=config.STRAVA_YEARS
-    )
+    try:
+        activities = fetch_data.maintain_archive(
+            access_token=token,
+            archive_file=config.ACTIVITIES_FILE,
+            target_years=config.STRAVA_YEARS
+        )
+    except Exception as e:
+        # A failure here means the archive file is untouched (maintain_archive
+        # only writes once, after every requested year succeeds) — safe to
+        # just retry the whole sync later, nothing to clean up.
+        print(f"Archive sync failed: {e}")
+        sys.exit(1)
 
     # 3. Process & Publish
     if activities:

@@ -2784,7 +2784,8 @@ def render_data_sync(df):
 # ---------------------------------------------------------------------------
 def _write_settings(new_settings, new_theme, old_theme):
     """Persist the full settings dict, clear the cache, and refresh. Flips the
-    theme via JS only when it actually changed; otherwise confirms and reruns."""
+    theme via JS only when it actually changed and we're not in DEMO_MODE;
+    otherwise confirms and reruns."""
     with open(config.SETTINGS_FILE, 'w') as f:
         json.dump(new_settings, f, indent=2)
     load_settings.clear()
@@ -2794,7 +2795,25 @@ def _write_settings(new_settings, new_theme, old_theme):
         # st.navigation below) — clear that so their next visit re-syncs
         # against the newly-saved theme instead of keeping stale localStorage.
         st.session_state.pop('_theme_synced_paths', None)
-        _apply_theme_js(new_theme)
+        if config.DEMO_MODE:
+            # Don't bother with _apply_theme_js here: Streamlit Community
+            # Cloud sandboxes this app's iframes without
+            # allow-top-navigation, so the reload it depends on is silently
+            # blocked there (confirmed via the iframe's own sandbox
+            # attribute — no JS exception, it just never navigates), AND the
+            # passive per-page sync below deliberately forces every demo
+            # page load back to "light" regardless of what's in
+            # settings.json (so one visitor's toggle can't become the next
+            # visitor's broken default). A refresh will never show dark here
+            # — say so plainly instead of promising an apply that can't
+            # happen.
+            st.info(
+                "Dark mode isn't available on this hosted demo — it always "
+                "loads in light mode so every visitor sees a consistent "
+                "page. Run the app locally to use dark mode."
+            )
+        else:
+            _apply_theme_js(new_theme)
     else:
         st.success("Settings saved.")
         st.rerun()
@@ -3348,7 +3367,16 @@ pg = st.navigation(
 _synced_paths = st.session_state.setdefault('_theme_synced_paths', set())
 if pg.url_path not in _synced_paths:
     _synced_paths.add(pg.url_path)
-    _saved_theme = settings.get('theme', 'light')
+    # In DEMO_MODE, always treat "light" as the baseline rather than reading
+    # the shared, ephemeral demo settings.json — that file is writable by any
+    # visitor's theme toggle (see the sidebar toggle below), so without this
+    # a previous visitor's dark-mode choice would silently become every
+    # subsequent visitor's broken default until the next redeploy. Combined
+    # with the scripted-reload restriction below, "light" is also the one
+    # value guaranteed to already match Streamlit's own true render, so this
+    # passive check is a no-op in the common case instead of attempting (and
+    # failing) a correction on every fresh demo visit.
+    _saved_theme = 'light' if config.DEMO_MODE else settings.get('theme', 'light')
     _current_theme = st.context.theme.type or 'light'
     if _saved_theme != _current_theme:
         _apply_theme_js(_saved_theme)
@@ -3423,7 +3451,11 @@ with st.sidebar:
     # Theme toggle, right below the main nav — the only place theme is set now
     # (the old Settings > Appearance page was removed once this existed).
     # Persists via the same _write_settings path every settings page uses.
-    _saved_theme_now = settings.get('theme', 'light')
+    # In DEMO_MODE, always show "light" as the starting position regardless
+    # of what the shared demo settings.json actually holds — see the matching
+    # comment on the passive per-page sync check above for why (one visitor's
+    # earlier toggle shouldn't silently become everyone else's default).
+    _saved_theme_now = 'light' if config.DEMO_MODE else settings.get('theme', 'light')
     _dark_on = st.toggle(
         "🌙 Dark mode", value=(_saved_theme_now == 'dark'), key='sidebar_dark_toggle',
     )

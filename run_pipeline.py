@@ -14,7 +14,7 @@ import json
 from src import config, fetch_data, process_data, publish_data
 
 def main():
-    print("--- Starting EveryMile Pipeline ---")
+    print("--- Starting Every Effort Pipeline ---")
     print(f"Target Years: {config.STRAVA_YEARS}")
 
     # 1. Config & Auth

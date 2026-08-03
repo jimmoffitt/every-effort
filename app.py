@@ -1,7 +1,7 @@
 """
 app.py — Streamlit dashboard entry point.
 
-Renders the multi-tab EveryMile UI: Bike, Snow, Swim, Combined (equity),
+Renders the multi-tab Every Effort UI: Bike, Snow, Swim, Combined (equity),
 Wrapped Stories, Explore, Export, and Settings. Each tab has a dedicated render_*
 function that pulls pre-processed DataFrames from process_data, passes them
 to Plotly figure factories in charts.py, and displays the results with
@@ -50,7 +50,7 @@ from src.config import BIKE_TYPES, GEAR_FALLBACKS, HIKE_TYPES, RUN_TYPES, SKI_TY
 # ---------------------------------------------------------------------------
 # Page config (must be first Streamlit call)
 # ---------------------------------------------------------------------------
-st.set_page_config(layout="wide", page_title="EveryMile")
+st.set_page_config(layout="wide", page_title="Every Effort")
 
 
 # ---------------------------------------------------------------------------
@@ -3441,7 +3441,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<h2 style='margin:0 0 0.2rem 0;color:#FC4C02'>EveryMile</h2>",
+        "<h2 style='margin:0 0 0.2rem 0;color:#FC4C02'>Every Effort</h2>",
         unsafe_allow_html=True,
     )
     st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)

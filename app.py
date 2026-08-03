@@ -3004,11 +3004,6 @@ def render_settings_section(settings, section):
                 key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
                 placeholder=config.BIKE_DEFAULT_IMAGE,
             )
-            _bike_preview = bike_path or config.BIKE_DEFAULT_IMAGE
-            if os.path.exists(_bike_preview):
-                st.image(_bike_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_bike_preview}")
         with _img_col_snow:
             if not config.DEMO_MODE:
                 _snow_upload = st.file_uploader(
@@ -3021,11 +3016,6 @@ def render_settings_section(settings, section):
                 key="settings_snow_image_path", value=saved_images.get('snow_path') or '',
                 placeholder=config.SNOW_DEFAULT_IMAGE,
             )
-            _snow_preview = snow_path or config.SNOW_DEFAULT_IMAGE
-            if os.path.exists(_snow_preview):
-                st.image(_snow_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_snow_preview}")
         with _img_col_swim:
             if not config.DEMO_MODE:
                 _swim_upload = st.file_uploader(
@@ -3038,11 +3028,34 @@ def render_settings_section(settings, section):
                 key="settings_swim_image_path", value=saved_images.get('swim_path') or '',
                 placeholder=config.SWIM_DEFAULT_IMAGE,
             )
-            _swim_preview = swim_path or config.SWIM_DEFAULT_IMAGE
-            if os.path.exists(_swim_preview):
-                st.image(_swim_preview, width=180)
-            else:
-                st.caption(f"⚠ File not found: {_swim_preview}")
+
+        # --- Row 1: current overrides — only shown when a path is actually set ---
+        st.markdown("**Current overrides**")
+        _ov_bike, _ov_snow, _ov_swim = st.columns(3)
+        for _col, _path, _sport in (
+            (_ov_bike, bike_path, "bike"), (_ov_snow, snow_path, "snow"), (_ov_swim, swim_path, "swim"),
+        ):
+            with _col:
+                if not _path:
+                    st.caption("No override set")
+                elif os.path.exists(_path):
+                    st.image(_path, width=180)
+                else:
+                    st.caption(f"⚠ File not found: {_path}")
+
+        # --- Row 2: bundled defaults, always read straight from assets/ ---
+        st.markdown("**Bundled defaults** (`assets/`)")
+        _def_bike, _def_snow, _def_swim = st.columns(3)
+        for _col, _default_path in (
+            (_def_bike, config.BIKE_DEFAULT_IMAGE),
+            (_def_snow, config.SNOW_DEFAULT_IMAGE),
+            (_def_swim, config.SWIM_DEFAULT_IMAGE),
+        ):
+            with _col:
+                if os.path.exists(_default_path):
+                    st.image(_default_path, width=180)
+                else:
+                    st.caption(f"⚠ File not found: {_default_path}")
 
         st.divider()
         if st.button("Save settings", type="primary"):

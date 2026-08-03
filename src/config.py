@@ -23,10 +23,23 @@ ASSETS_DIR = 'assets'  # bundled, tracked images shipped with the app
 for d in [DATA_DIR, PROCESSED_DIR, IMAGES_DIR, RAW_DIR]:
     os.makedirs(d, exist_ok=True)
 
+def _bundled_default_image(name):
+    """Return the first assets/<name>.<ext> file that exists, trying common
+    photo extensions in order. Falls back to assets/<name>.jpg (even if it
+    doesn't exist) so callers can still check os.path.exists() themselves
+    rather than getting None. Lets a bundled default be swapped between jpg
+    and png without touching any code that references it."""
+    for ext in ('.jpg', '.jpeg', '.png', '.webp'):
+        candidate = os.path.join(ASSETS_DIR, f'{name}{ext}')
+        if os.path.exists(candidate):
+            return candidate
+    return os.path.join(ASSETS_DIR, f'{name}.jpg')
+
+
 # Bundled default images (shipped via repo, not generated)
-SNOW_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'snow.jpg')
-SWIM_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'pool.jpg')
-BIKE_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'bike.jpg')
+SNOW_DEFAULT_IMAGE = _bundled_default_image('snow')
+SWIM_DEFAULT_IMAGE = _bundled_default_image('swim')
+BIKE_DEFAULT_IMAGE = _bundled_default_image('bike')
 
 # 2. Define File Paths
 TOKEN_FILE = os.getenv('STRAVA_TOKEN_FILE', os.path.join(DATA_DIR, 'strava_tokens.json'))
@@ -141,7 +154,7 @@ DEFAULT_SETTINGS = {
     'images': {
         'snow_path': None,   # None = use bundled SNOW_DEFAULT_IMAGE
         'swim_path': None,   # None = use bundled SWIM_DEFAULT_IMAGE
-        'bike_path': None,   # None = use the generated BIKE_DEFAULT_IMAGE (route heatmap)
+        'bike_path': None,   # None = use bundled BIKE_DEFAULT_IMAGE
     },
     # Manual equity declarations: activities named with the equity convention
     # (e.g. "GEq 10" = 10 declared equity miles) for effort you want counted by

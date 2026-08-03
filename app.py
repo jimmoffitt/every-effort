@@ -30,7 +30,6 @@ from src.charts import (
     SKI_BLUE_LIGHT,
     STRAVA_ORANGE,
     SWIM_TEAL,
-    SWIM_TEAL_LIGHT,
     make_bike_heatmap,
     make_calendar_heatmap,
     make_equity_annual_chart,
@@ -1177,17 +1176,6 @@ def render_swim_tab(swim_df, settings, df=None):
             make_swim_year_chart(yearly_plot, current_year, height=220),
         )
 
-    # --- All-time monthly pattern (which calendar months you actually swim) ---
-    _alltime_monthly_swim = _agg_swim_by_month(swim_df, None)
-    _dc_all = 'meters' if _unit == 'Meters' else 'yards'
-    if _alltime_monthly_swim['swims'].sum() > 0:
-        st.plotly_chart(
-            make_monthly_chart(
-                _alltime_monthly_swim, _dc_all, _dlabel,
-                title=f"All-Time {_dlabel} by Month", color=SWIM_TEAL,
-            ),
-        )
-
     # --- 3. Controls: Year + Units ---
     ctrl_l, ctrl_r = st.columns(2)
     with ctrl_l:
@@ -1251,33 +1239,42 @@ def render_swim_tab(swim_df, settings, df=None):
     # --- Top 5 Swims for the selected period ---
     _render_longest_table(period_df, 'distance', fmt_swim, f"Top 5 Swims — {_period_label}", n=5)
 
-    # --- Second, thin monthly chart for the selected period ---
-    st.plotly_chart(
-        make_monthly_chart(monthly, dist_col, dist_label, color=SWIM_TEAL_LIGHT, title=" ", height=180),
-    )
-
     # --- 6. Table of contents for the list sections below ---
     _section_toc(
-        [("Most Recent Swims",       "most-recent-swims"),
+        [("All-Time Distance by Month", "all-time-distance-by-month"),
+         ("Most Recent Swims",       "most-recent-swims"),
          ("All-time Longest Swims",  "all-time-longest-swims"),
          ("Top Ten Months",          "top-ten-months-by-distance")],
         SWIM_TEAL,
     )
 
-    # --- 7. Most Recent Swims ---
+    # --- 7. All-time monthly pattern (which calendar months you actually swim) ---
+    st.divider()
+    st.subheader("All-Time Distance by Month")
+    _alltime_monthly_swim = _agg_swim_by_month(swim_df, None)
+    _dc_all = 'meters' if _unit == 'Meters' else 'yards'
+    if _alltime_monthly_swim['swims'].sum() > 0:
+        st.plotly_chart(
+            make_monthly_chart(
+                _alltime_monthly_swim, _dc_all, _dlabel,
+                title=" ", color=SWIM_TEAL,
+            ),
+        )
+
+    # --- 8. Most Recent Swims ---
     st.divider()
     _render_recent_table(swim_df, fmt_swim, "Most Recent Swims", key_prefix="swim", widget="number")
 
-    # --- 8. All-time Longest Swims ---
+    # --- 9. All-time Longest Swims ---
     st.divider()
     _render_longest_table(swim_df, 'distance', fmt_swim, "All-time Longest Swims")
 
-    # --- 9. Top Ten Months by distance ---
+    # --- 10. Top Ten Months by distance ---
     st.divider()
     _swim_month_fmt = (lambda v: f"{v:,.0f} m") if unit == 'Meters' else (lambda v: f"{v * 1.09361:,.0f} yd")
     _render_top_months_table(swim_months_ranked, _swim_month_fmt)
 
-    # --- 10. Experiments: Month/Week comparison tooling ---
+    # --- 11. Experiments: Month/Week comparison tooling ---
     st.divider()
     st.subheader("Experiments")
     swim_time_mode = st.radio(

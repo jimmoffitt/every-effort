@@ -27,7 +27,6 @@ from src.charts import (
     RUN_PURPLE,
     RUN_PURPLE_LIGHT,
     SKI_BLUE,
-    SKI_BLUE_LIGHT,
     STRAVA_ORANGE,
     SWIM_TEAL,
     make_bike_heatmap,
@@ -700,14 +699,15 @@ def render_bike_heatmap_view(compact: bool = False):
 
 
 def render_bike_tab(bike_df, gear_map, settings):
-    """Bike tab, top to bottom: all-time stats + route-heatmap thumbnail,
-    annual distance chart, all-time monthly pattern, a year section (selector
-    + monthly chart with goal line + 4-stat box), Most Recent/Longest/Top
-    Months tables, a by-bike gear filter, the full-size route heatmap,
-    all-time miles per bike, and an Experiments section (Year/Month/Week
-    comparison views). Bike/Snow/Swim each follow this same shape; Running
-    and Hiking use the generalized render_activity_tab version of it instead
-    of duplicating this function."""
+    """Bike tab, top to bottom: all-time stats + bike photo thumbnail, annual
+    distance chart, Year + Units controls, a year section (monthly chart with
+    goal line + 4-stat box), Most Recent/Longest/Top Months tables (with the
+    all-time monthly pattern chart moved into its own section below the first
+    divider, mirroring Swim), a by-bike gear filter, the full-size route
+    heatmap, all-time miles per bike, and an Experiments section (Year/Month/
+    Week comparison views). Bike/Snow/Swim each follow this same shape;
+    Running and Hiking use the generalized render_activity_tab version of it
+    instead of duplicating this function."""
     st.title("🚴 Bike")
     current_year = date.today().year
     _unit = st.session_state.get('bike_unit', 'Miles')
@@ -731,7 +731,7 @@ def render_bike_tab(bike_df, gear_map, settings):
 
     _dc, _dl = ('miles', 'Miles') if _is_mi else ('km', 'Km')
 
-    # --- All-time stats line (left) + static heatmap thumbnail (right) ---
+    # --- All-time stats line (left) + bike photo thumbnail (right) ---
     _stats_col, _thumb_col = st.columns([2.7, 1.3])
     with _stats_col:
         if not filtered_df.empty and not yearly_all.empty:
@@ -769,36 +769,22 @@ def render_bike_tab(bike_df, gear_map, settings):
             make_year_dist_chart(_yearly_unfiltered, _dc, _dl, current_year, height=220),
         )
 
-    # --- All-time monthly pattern (which calendar months you actually ride) ---
-    _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
-    if _alltime_monthly_bike['count'].sum() > 0:
-        st.plotly_chart(
-            make_monthly_chart(
-                _alltime_monthly_bike, _dc, _dl,
-                title=f"All-Time {_dl} by Month",
-            ),
-        )
-
-    # --- Units control ---
-    unit = st.radio(
-        "Units", ["Miles", "Km"],
-        horizontal=True, key="bike_unit",
-    )
+    # --- Controls: Year + Units ---
+    ctrl_l, ctrl_r = st.columns(2)
+    with ctrl_l:
+        available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
+        # Seed session state to avoid index=/key= conflict
+        _cur_by = st.session_state.get('bike_year')
+        if _cur_by not in available_years:
+            st.session_state['bike_year'] = available_years[0] if available_years else None
+        selected_year = st.selectbox("Year", available_years, key="bike_year")
+    with ctrl_r:
+        unit = st.radio("Units", ["Miles", "Km"], horizontal=True, key="bike_unit")
 
     dist_col = 'miles' if unit == 'Miles' else 'km'
     dist_label = 'Miles' if unit == 'Miles' else 'Km'
 
-    # --- Year section: selector + monthly chart + stats box (mirrors the
-    # Snow season section and Swim year section) ---
-    available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
-
-    # Seed session state to avoid index=/key= conflict
-    _cur_by = st.session_state.get('bike_year')
-    if _cur_by not in available_years:
-        st.session_state['bike_year'] = available_years[0] if available_years else None
-
-    selected_year = st.selectbox("Year", available_years, key="bike_year")
-
+    # --- Year's monthly chart + stats box ---
     if selected_year is not None and not yearly_all.empty:
         yr_row = yearly_all[yearly_all['year'] == selected_year]
         max_ride = filtered_df[filtered_df['year'] == selected_year]['distance_miles'].max() \
@@ -830,11 +816,21 @@ def render_bike_tab(bike_df, gear_map, settings):
 
     # --- Table of contents for the list sections below ---
     _section_toc(
-        [("Most Recent Rides", "most-recent-rides"),
+        [("All-Time Distance by Month", "all-time-distance-by-month"),
+         ("Most Recent Rides", "most-recent-rides"),
          ("Longest Rides",     "longest-rides"),
          ("Top Ten Months",    "top-ten-months-by-distance")],
         STRAVA_ORANGE,
     )
+
+    # --- All-time monthly pattern (which calendar months you actually ride) ---
+    st.divider()
+    st.subheader("All-Time Distance by Month")
+    _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
+    if _alltime_monthly_bike['count'].sum() > 0:
+        st.plotly_chart(
+            make_monthly_chart(_alltime_monthly_bike, _dc, _dl, title=" "),
+        )
 
     st.divider()
     _render_recent_table(filtered_df, fmt_bike, "Most Recent Rides", key_prefix="bike")
@@ -1015,12 +1011,6 @@ def render_ski_tab(ski_df, settings):
         f"Top 5 Ski Days — {selected_label}", n=5,
     )
 
-    # --- Second, thin Vert by Month chart for the selected season ---
-    if not monthly_season.empty:
-        st.plotly_chart(
-            make_monthly_chart(monthly_season, 'vert_ft', 'ft', color=SKI_BLUE_LIGHT, title=" ", height=180),
-        )
-
     # --- 4b. Table of contents for the list sections below ---
     _section_toc(
         [("Most Recent Snow Activities", "most-recent-snow-activities"),
@@ -1181,6 +1171,9 @@ def render_swim_tab(swim_df, settings, df=None):
     with ctrl_l:
         years = sorted(swim_df['year'].unique().tolist(), reverse=True)
         year_options = ["All time"] + [str(y) for y in years]
+        _cur_year_label = st.session_state.get('swim_year')
+        if _cur_year_label not in year_options:
+            st.session_state['swim_year'] = str(current_year) if str(current_year) in year_options else "All time"
         selected_year_label = st.selectbox("Year", year_options, key="swim_year")
     with ctrl_r:
         unit = st.radio("Units", ["Meters", "Yards"], horizontal=True, key="swim_unit")
@@ -1219,11 +1212,12 @@ def render_swim_tab(swim_df, settings, df=None):
     # --- Distance by Month chart, header carries the goal-pace readout ---
     _period_label = "All Time" if is_all_time else str(selected_year)
     _chart_header_with_goal(
-        f"{_period_label} Distance by Month ({dist_label})",
+        f"{_period_label} Distance by Month ({dist_col})",
         current=avg_monthly, goal=goal_val, unit_label=f"{dist_label} avg", color=SWIM_TEAL,
     )
     st.plotly_chart(
-        make_monthly_chart(monthly, dist_col, dist_label, goal=goal_val, color=SWIM_TEAL, title=" "),
+        make_monthly_chart(monthly, dist_col, dist_label, goal=goal_val, color=SWIM_TEAL, title=" ",
+                            yaxis_label=unit),
     )
 
     _stats_box([
@@ -1257,7 +1251,7 @@ def render_swim_tab(swim_df, settings, df=None):
         st.plotly_chart(
             make_monthly_chart(
                 _alltime_monthly_swim, _dc_all, _dlabel,
-                title=" ", color=SWIM_TEAL,
+                title=" ", color=SWIM_TEAL, yaxis_label=_unit,
             ),
         )
 
@@ -2991,8 +2985,7 @@ def render_settings_section(settings, section):
         st.divider()
         st.subheader("Sport tab images")
         st.caption(
-            "Each sport tab shows a default image beside its all-time stats — a bundled "
-            "photo for Snow and Swim, or the auto-generated route heatmap for Bike. "
+            "Each sport tab shows a default bundled photo beside its all-time stats. "
             "Upload your own photo, or type a path to an existing file, to override any "
             "of them. Nothing here takes effect until you hit Save below."
         )
@@ -3007,7 +3000,7 @@ def render_settings_section(settings, section):
                 )
                 _handle_sport_photo_upload('bike', 'settings_bike_image_path', _bike_upload)
             bike_path = st.text_input(
-                "Bike image path (blank = route heatmap)",
+                "Bike image path (blank = default)",
                 key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
                 placeholder=config.BIKE_DEFAULT_IMAGE,
             )

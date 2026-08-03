@@ -26,9 +26,7 @@ for d in [DATA_DIR, PROCESSED_DIR, IMAGES_DIR, RAW_DIR]:
 # Bundled default images (shipped via repo, not generated)
 SNOW_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'snow.jpg')
 SWIM_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'pool.jpg')
-# Bike's "default" isn't a bundled photo — it's the route heatmap the
-# pipeline generates from your own ride history (see publish_data.py).
-BIKE_DEFAULT_IMAGE = os.path.join(IMAGES_DIR, 'bike_heat_map_all_time.png')
+BIKE_DEFAULT_IMAGE = os.path.join(ASSETS_DIR, 'bike.jpg')
 
 # 2. Define File Paths
 TOKEN_FILE = os.getenv('STRAVA_TOKEN_FILE', os.path.join(DATA_DIR, 'strava_tokens.json'))

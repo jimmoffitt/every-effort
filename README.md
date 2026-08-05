@@ -86,8 +86,8 @@ This repository contains the code and content needed to deploy your own Every Ef
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/jimmoffitt/strava-stats.git
-cd strava-stats
+git clone https://github.com/jimmoffitt/every-effort.git
+cd every-effort
 pip install -r requirements.txt
 
 # 2. Add your Strava credentials
@@ -115,7 +115,7 @@ The [live demo](https://every-effort.streamlit.app/) is the same app in a read-o
 
 **Sanitized dataset.** The real activity archive is gitignored (it contains heart rate, power, device, and precise location data). `make_demo_data.py` derives a committable copy at `data/demo/activities.json` by whitelisting only the ~14 fields the app actually reads — id, name, type, dates, distance, times, elevation, gear id, and a couple of counts — plus each ride's `map.summary_polyline`, kept by choice so the bike heatmap renders with real routes in the demo. Exact start/end coordinates, heart rate, power, device names, and location strings are all dropped. A copy of the gear map rides along so bike names render.
 
-**Automatic demo mode.** `DEMO_MODE` in `src/config.py` turns on when `STRAVA_STATS_DEMO=1` is set, or automatically when the real archive is absent but the demo dataset is present — which is exactly the state of a fresh clone, since `data/` is gitignored. In demo mode every data path is redirected to `data/demo/`, the Sync Now button is replaced with a read-only notice, and runtime writes (settings, sync records) land in `data/demo/` where they're gitignored. Locally, with the real archive present, nothing changes.
+**Automatic demo mode.** `DEMO_MODE` in `src/config.py` turns on when `EVERY_EFFORT_DEMO=1` is set, or automatically when the real archive is absent but the demo dataset is present — which is exactly the state of a fresh clone, since `data/` is gitignored. In demo mode every data path is redirected to `data/demo/`, the Sync Now button is replaced with a read-only notice, and runtime writes (settings, sync records) land in `data/demo/` where they're gitignored. Locally, with the real archive present, nothing changes.
 
 **Deployment.** Point [share.streamlit.io](https://share.streamlit.io) at `app.py` on `main` — that's the whole setup. A fresh clone has no real archive, so demo mode enables itself; no secrets or environment configuration are needed. The app redeploys automatically on every push. Two host-friendly details: `requirements.txt` lists direct dependencies with loose version ranges (so the host's Python always gets prebuilt wheels), and the Export tab probes for PNG-rendering capability at runtime, degrading to CSV-only downloads where kaleido has no Chrome to drive.
 
@@ -139,7 +139,7 @@ The [live demo](https://every-effort.streamlit.app/) is the same app in a read-o
 #### Project structure
 
 ```
-strava-stats/
+every-effort/
 ├── app.py                   # Streamlit dashboard — all page render functions
 ├── run_pipeline.py          # CLI: fetch → process → publish (static PNGs)
 ├── make_demo_data.py        # Builds the sanitized data/demo/ dataset for the demo

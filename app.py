@@ -3481,7 +3481,7 @@ with st.sidebar:
 
     st.divider()
     st.markdown(
-        "<a href='https://github.com/jimmoffitt/strava-stats' target='_blank' "
+        "<a href='https://github.com/jimmoffitt/every-effort' target='_blank' "
         "style='font-size:13px;text-decoration:none;color:inherit;opacity:0.75'>"
         "&#128279; View source on GitHub</a>",
         unsafe_allow_html=True,

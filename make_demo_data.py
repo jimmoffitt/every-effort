@@ -42,7 +42,7 @@ FIELD_WHITELIST = [
 ]
 
 # Real paths, deliberately independent of config's DEMO_MODE redirection so
-# this script always reads the true archive even if STRAVA_STATS_DEMO is set.
+# this script always reads the true archive even if EVERY_EFFORT_DEMO is set.
 REAL_ARCHIVE  = os.path.join('data', 'raw', 'my_strava_activities.json')
 REAL_GEAR_MAP = os.path.join('data', 'gear_map.json')
 DEMO_DIR      = os.path.join('data', 'demo')

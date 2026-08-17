@@ -282,7 +282,8 @@ def _stats_box(items):
 
 
 def _all_time_line(*, distance, hours, activities, seasons, best_year,
-                   largest_month, highest, equity, avg, avg_time, avg_speed):
+                   largest_month, highest, equity, avg, avg_time, avg_speed,
+                   avg_speed_label="Avg Speed", extra=None):
     """Render the uniform all-time stats line shared by the sport tabs.
 
     Every sport shows the same slots in the same order; values are pre-formatted
@@ -290,6 +291,12 @@ def _all_time_line(*, distance, hours, activities, seasons, best_year,
     miles, snow vertical feet, swim meters, …). The "biggest" stats run from
     coarse to fine: best year → largest month → highest single activity. The
     trailing averages (distance, time, speed) are all per-activity.
+
+    ``avg_speed_label`` lets a tab relabel that slot when its "speed" isn't a
+    literal travel speed (e.g. Snow's vertical-feet-per-hour rate). ``extra``
+    is an optional list of (label, value) tuples appended after the standard
+    slots, for sport-specific stats that don't fit the shared shape (e.g.
+    Snow's actual mph average/top speed).
     """
     _stats_box([
         ("All-Time Distance", distance),
@@ -302,7 +309,8 @@ def _all_time_line(*, distance, hours, activities, seasons, best_year,
         ("Equity Miles",      equity),
         ("Avg Distance",      avg),
         ("Avg Time",          avg_time),
-        ("Avg Speed",         avg_speed),
+        (avg_speed_label,     avg_speed),
+        *(extra or []),
     ])
 
 
@@ -731,116 +739,121 @@ def render_bike_tab(bike_df, gear_map, settings):
 
     _dc, _dl = ('miles', 'Miles') if _is_mi else ('km', 'Km')
 
-    # --- All-time stats line (left) + bike photo thumbnail (right) ---
-    _stats_col, _thumb_col = st.columns([2.7, 1.3])
-    with _stats_col:
-        if not filtered_df.empty and not yearly_all.empty:
-            _tot   = yearly_all['miles'].sum()
-            _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
-            _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
-            _lm    = bike_months_ranked.iloc[0]
-            _ref   = settings.get('reference_sport', 'Bike')
-            _brate = settings.get('conversions', {}).get('bike_miles_per_ref_unit', 1.0)
-            _eq    = 0 if _ref == 'Bike' else (_tot / _brate if _brate else 0)
-            _hrs   = yearly_all['hours'].sum()
-            _cnt   = int(yearly_all['count'].sum())
-            _all_time_line(
-                distance=f"{_conv(_tot):,.0f} {_du}",
-                hours=f"{_hrs:,.0f} h",
-                activities=f"{_cnt:,}",
-                seasons=str(filtered_df['year'].nunique()),
-                best_year=f"{int(_best['year'])} · {_conv(_best['miles']):,.0f} {_du}",
-                largest_month=f"{_conv(_lm['value']):,.0f} {_du} · {_lm['label']}",
-                highest=f"{_conv(_long['distance_miles']):,.1f} {_du} · {_fmt_date(_long['start_date_local'])}",
-                equity=f"{_eq:,.0f}",
-                avg=f"{_conv(filtered_df['distance_miles'].mean()):,.1f} {_du}",
-                avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
-                avg_speed=f"{_conv(_tot) / _hrs:,.1f} {_du}/h" if _hrs else "—",
+    # === Section: All-time snapshot ===
+    with st.container(border=True):
+        # --- All-time stats line (left) + bike photo thumbnail (right) ---
+        _stats_col, _thumb_col = st.columns([2.7, 1.3])
+        with _stats_col:
+            if not filtered_df.empty and not yearly_all.empty:
+                _tot   = yearly_all['miles'].sum()
+                _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
+                _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
+                _lm    = bike_months_ranked.iloc[0]
+                _ref   = settings.get('reference_sport', 'Bike')
+                _brate = settings.get('conversions', {}).get('bike_miles_per_ref_unit', 1.0)
+                _eq    = 0 if _ref == 'Bike' else (_tot / _brate if _brate else 0)
+                _hrs   = yearly_all['hours'].sum()
+                _cnt   = int(yearly_all['count'].sum())
+                _all_time_line(
+                    distance=f"{_conv(_tot):,.0f} {_du}",
+                    hours=f"{_hrs:,.0f} h",
+                    activities=f"{_cnt:,}",
+                    seasons=str(filtered_df['year'].nunique()),
+                    best_year=f"{int(_best['year'])} · {_conv(_best['miles']):,.0f} {_du}",
+                    largest_month=f"{_conv(_lm['value']):,.0f} {_du} · {_lm['label']}",
+                    highest=f"{_conv(_long['distance_miles']):,.1f} {_du} · {_fmt_date(_long['start_date_local'])}",
+                    equity=f"{_eq:,.0f}",
+                    avg=f"{_conv(filtered_df['distance_miles'].mean()):,.1f} {_du}",
+                    avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
+                    avg_speed=f"{_conv(_tot) / _hrs:,.1f} {_du}/h" if _hrs else "—",
+                )
+        with _thumb_col:
+            _bike_img_path = (settings.get('images', {}) or {}).get('bike_path') or config.BIKE_DEFAULT_IMAGE
+            if os.path.exists(_bike_img_path):
+                st.image(_bike_img_path, width="stretch")
+
+        # --- Annual distance chart (full width, all bikes) ---
+        _yearly_unfiltered = process_data.aggregate_by_year(bike_df)
+        if not _yearly_unfiltered.empty:
+            st.plotly_chart(
+                make_year_dist_chart(_yearly_unfiltered, _dc, _dl, current_year, height=220),
             )
-    with _thumb_col:
-        _bike_img_path = (settings.get('images', {}) or {}).get('bike_path') or config.BIKE_DEFAULT_IMAGE
-        if os.path.exists(_bike_img_path):
-            st.image(_bike_img_path, width="stretch")
 
-    # --- Annual distance chart (full width, all bikes) ---
-    _yearly_unfiltered = process_data.aggregate_by_year(bike_df)
-    if not _yearly_unfiltered.empty:
-        st.plotly_chart(
-            make_year_dist_chart(_yearly_unfiltered, _dc, _dl, current_year, height=220),
+    # === Section: This year (period selector + charts) ===
+    with st.container(border=True):
+        # --- Controls: Year + Units ---
+        ctrl_l, ctrl_r = st.columns(2)
+        with ctrl_l:
+            available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
+            # Seed session state to avoid index=/key= conflict
+            _cur_by = st.session_state.get('bike_year')
+            if _cur_by not in available_years:
+                st.session_state['bike_year'] = available_years[0] if available_years else None
+            selected_year = st.selectbox("Year", available_years, key="bike_year")
+        with ctrl_r:
+            unit = st.radio("Units", ["Miles", "Km"], horizontal=True, key="bike_unit")
+
+        dist_col = 'miles' if unit == 'Miles' else 'km'
+        dist_label = 'Miles' if unit == 'Miles' else 'Km'
+
+        # --- Year's monthly chart + stats box ---
+        if selected_year is not None and not yearly_all.empty:
+            yr_row = yearly_all[yearly_all['year'] == selected_year]
+            max_ride = filtered_df[filtered_df['year'] == selected_year]['distance_miles'].max() \
+                       if not filtered_df[filtered_df['year'] == selected_year].empty else 0
+
+            monthly_bike = process_data.aggregate_bike_by_month(filtered_df, selected_year)
+            _bike_goal_series = process_data.bike_monthly_goal_series(settings)
+            if dist_col == 'km':
+                _bike_goal_series = [v * 1.60934 for v in _bike_goal_series]
+            st.plotly_chart(
+                make_monthly_chart(monthly_bike, dist_col, dist_label, goal=_bike_goal_series),
+            )
+
+            if not yr_row.empty:
+                r = yr_row.iloc[0]
+                yr_dist = f"{r['miles']:,.0f} mi" if dist_col == 'miles' else f"{r['km']:,.0f} km"
+                yr_max  = f"{max_ride:,.1f} mi" if dist_col == 'miles' else f"{max_ride * 1.60934:,.1f} km"
+                _stats_box([
+                    (f"{selected_year} Distance", yr_dist),
+                    ("Longest Ride",              yr_max),
+                    ("Hours",                     f"{r['hours']:,.0f} h"),
+                    ("Rides",                     f"{int(r['count']):,}"),
+                ])
+
+        # --- Table of contents for the list sections below ---
+        _section_toc(
+            [("All-Time Distance by Month", "all-time-distance-by-month"),
+             ("Most Recent Rides", "most-recent-rides"),
+             ("Longest Rides",     "longest-rides"),
+             ("Top Ten Months",    "top-ten-months-by-distance")],
+            STRAVA_ORANGE,
         )
-
-    # --- Controls: Year + Units ---
-    ctrl_l, ctrl_r = st.columns(2)
-    with ctrl_l:
-        available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
-        # Seed session state to avoid index=/key= conflict
-        _cur_by = st.session_state.get('bike_year')
-        if _cur_by not in available_years:
-            st.session_state['bike_year'] = available_years[0] if available_years else None
-        selected_year = st.selectbox("Year", available_years, key="bike_year")
-    with ctrl_r:
-        unit = st.radio("Units", ["Miles", "Km"], horizontal=True, key="bike_unit")
-
-    dist_col = 'miles' if unit == 'Miles' else 'km'
-    dist_label = 'Miles' if unit == 'Miles' else 'Km'
-
-    # --- Year's monthly chart + stats box ---
-    if selected_year is not None and not yearly_all.empty:
-        yr_row = yearly_all[yearly_all['year'] == selected_year]
-        max_ride = filtered_df[filtered_df['year'] == selected_year]['distance_miles'].max() \
-                   if not filtered_df[filtered_df['year'] == selected_year].empty else 0
-
-        monthly_bike = process_data.aggregate_bike_by_month(filtered_df, selected_year)
-        _bike_goal_series = process_data.bike_monthly_goal_series(settings)
-        if dist_col == 'km':
-            _bike_goal_series = [v * 1.60934 for v in _bike_goal_series]
-        st.plotly_chart(
-            make_monthly_chart(monthly_bike, dist_col, dist_label, goal=_bike_goal_series),
-        )
-
-        if not yr_row.empty:
-            r = yr_row.iloc[0]
-            yr_dist = f"{r['miles']:,.0f} mi" if dist_col == 'miles' else f"{r['km']:,.0f} km"
-            yr_max  = f"{max_ride:,.1f} mi" if dist_col == 'miles' else f"{max_ride * 1.60934:,.1f} km"
-            _stats_box([
-                (f"{selected_year} Distance", yr_dist),
-                ("Longest Ride",              yr_max),
-                ("Hours",                     f"{r['hours']:,.0f} h"),
-                ("Rides",                     f"{int(r['count']):,}"),
-            ])
 
     if unit == 'Miles':
         fmt_bike = lambda r: f"{r['distance_miles']:,.1f} mi"
     else:
         fmt_bike = lambda r: f"{r['distance'] / 1000:.1f} km"
 
-    # --- Table of contents for the list sections below ---
-    _section_toc(
-        [("All-Time Distance by Month", "all-time-distance-by-month"),
-         ("Most Recent Rides", "most-recent-rides"),
-         ("Longest Rides",     "longest-rides"),
-         ("Top Ten Months",    "top-ten-months-by-distance")],
-        STRAVA_ORANGE,
-    )
+    # === Section: Detail tables ===
+    with st.container(border=True):
+        # --- All-time monthly pattern (which calendar months you actually ride) ---
+        st.subheader("All-Time Distance by Month")
+        _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
+        if _alltime_monthly_bike['count'].sum() > 0:
+            st.plotly_chart(
+                make_monthly_chart(_alltime_monthly_bike, _dc, _dl, title=" "),
+            )
 
-    # --- All-time monthly pattern (which calendar months you actually ride) ---
-    st.divider()
-    st.subheader("All-Time Distance by Month")
-    _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
-    if _alltime_monthly_bike['count'].sum() > 0:
-        st.plotly_chart(
-            make_monthly_chart(_alltime_monthly_bike, _dc, _dl, title=" "),
-        )
+        st.divider()
+        _render_recent_table(filtered_df, fmt_bike, "Most Recent Rides", key_prefix="bike")
 
-    st.divider()
-    _render_recent_table(filtered_df, fmt_bike, "Most Recent Rides", key_prefix="bike")
+        st.divider()
+        _render_longest_table(filtered_df, 'distance_miles', fmt_bike, "Longest Rides")
 
-    st.divider()
-    _render_longest_table(filtered_df, 'distance_miles', fmt_bike, "Longest Rides")
-
-    st.divider()
-    _bike_month_fmt = (lambda v: f"{v:,.0f} mi") if unit == 'Miles' else (lambda v: f"{v * 1.60934:,.0f} km")
-    _render_top_months_table(bike_months_ranked, _bike_month_fmt)
+        st.divider()
+        _bike_month_fmt = (lambda v: f"{v:,.0f} mi") if unit == 'Miles' else (lambda v: f"{v * 1.60934:,.0f} km")
+        _render_top_months_table(bike_months_ranked, _bike_month_fmt)
 
     st.divider()
 
@@ -919,149 +932,171 @@ def render_ski_tab(ski_df, settings):
     seasonal_df = _agg_ski_by_season(ski_df)
     ski_months_ranked = process_data.rank_months_by_distance(ski_df, 'elevation_feet')
 
-    # --- All-time stats line (left) + snow image (right). Snow measures
-    # "distance" in vertical feet. ---
-    _stats_col, _img_col = st.columns([2.7, 1.3])
-    with _stats_col:
-        if not seasonal_df.empty:
-            _all_vert     = seasonal_df['vert_ft'].sum()
-            _all_sessions = int(seasonal_df['sessions'].sum())
-            _best_season  = seasonal_df.loc[seasonal_df['vert_ft'].idxmax()]
-            _big          = ski_df.loc[ski_df['elevation_feet'].idxmax()]
-            _lm           = ski_months_ranked.iloc[0]
-            _all_eq       = _all_vert / ski_vert_per_mile if ski_vert_per_mile > 0 else 0
-            _avg_vert     = _all_vert / _all_sessions if _all_sessions else 0
-            _all_secs     = ski_df['moving_time'].sum()
-            _all_hrs      = _all_secs / 3600
-            _all_time_line(
-                distance=f"{_all_vert:,.0f} ft",
-                hours=f"{_all_hrs:,.0f} h",
-                activities=f"{_all_sessions:,}",
-                seasons=str(len(seasonal_df)),
-                best_year=f"{_best_season['season_label']} · {_best_season['vert_ft']:,.0f} ft",
-                largest_month=f"{_lm['value']:,.0f} ft · {_lm['label']}",
-                highest=f"{_big['elevation_feet']:,.0f} ft · {_fmt_date(_big['start_date_local'])}",
-                equity=f"{_all_eq:,.0f}",
-                avg=f"{_avg_vert:,.0f} ft",
-                avg_time=_fmt_time(_all_secs / _all_sessions) if _all_sessions else "—",
-                avg_speed=f"{_all_vert / _all_hrs:,.0f} ft/h" if _all_hrs else "—",
-            )
-    with _img_col:
-        _img_path = (settings.get('images', {}) or {}).get('snow_path') or config.SNOW_DEFAULT_IMAGE
-        if os.path.exists(_img_path):
-            st.image(_img_path, width="stretch")
+    # === Section: All-time snapshot ===
+    with st.container(border=True):
+        # --- All-time stats line (left) + snow image (right). Snow measures
+        # "distance" in vertical feet. ---
+        _stats_col, _img_col = st.columns([2.7, 1.3])
+        with _stats_col:
+            if not seasonal_df.empty:
+                _all_vert     = seasonal_df['vert_ft'].sum()
+                _all_sessions = int(seasonal_df['sessions'].sum())
+                _best_season  = seasonal_df.loc[seasonal_df['vert_ft'].idxmax()]
+                _big          = ski_df.loc[ski_df['elevation_feet'].idxmax()]
+                _lm           = ski_months_ranked.iloc[0]
+                _all_eq       = _all_vert / ski_vert_per_mile if ski_vert_per_mile > 0 else 0
+                _avg_vert     = _all_vert / _all_sessions if _all_sessions else 0
+                _all_secs     = ski_df['moving_time'].sum()
+                _all_hrs      = _all_secs / 3600
+                # Actual travel speed (mph), distinct from the vertical-feet-
+                # per-hour rate above — average_speed/max_speed are m/s.
+                _all_miles    = ski_df['distance_miles'].sum()
+                _avg_mph      = (_all_miles / _all_hrs) if _all_hrs else 0
+                # GPS glitches occasionally spike a single point's recorded
+                # speed well past anything achievable on skis — exclude
+                # anything above 65 mph as noise rather than a real top speed.
+                if 'max_speed' in ski_df:
+                    _plausible_max = ski_df['max_speed'][ski_df['max_speed'] * 2.23694 <= 65]
+                    _top_mph = _plausible_max.max() * 2.23694 if not _plausible_max.empty else 0
+                else:
+                    _top_mph = 0
+                _all_time_line(
+                    distance=f"{_all_vert:,.0f} ft",
+                    hours=f"{_all_hrs:,.0f} h",
+                    activities=f"{_all_sessions:,}",
+                    seasons=str(len(seasonal_df)),
+                    best_year=f"{_best_season['season_label']} · {_best_season['vert_ft']:,.0f} ft",
+                    largest_month=f"{_lm['value']:,.0f} ft · {_lm['label']}",
+                    highest=f"{_big['elevation_feet']:,.0f} ft · {_fmt_date(_big['start_date_local'])}",
+                    equity=f"{_all_eq:,.0f}",
+                    avg=f"{_avg_vert:,.0f} ft",
+                    avg_time=_fmt_time(_all_secs / _all_sessions) if _all_sessions else "—",
+                    avg_speed=f"{_all_vert / _all_hrs:,.0f} ft/h" if _all_hrs else "—",
+                    avg_speed_label="Vertical / Hour",
+                    extra=[
+                        ("Avg Speed", f"{_avg_mph:,.1f} mph" if _all_hrs else "—"),
+                        ("Top Speed", f"{_top_mph:,.1f} mph" if _top_mph else "—"),
+                    ],
+                )
+        with _img_col:
+            _img_path = (settings.get('images', {}) or {}).get('snow_path') or config.SNOW_DEFAULT_IMAGE
+            if os.path.exists(_img_path):
+                st.image(_img_path, width="stretch")
 
-    # --- 1. All-seasons overview chart (full width); header carries the
-    # season-goal readout since the chart already draws the goal as a
-    # dashed line — no need to repeat it as a block further down. ---
-    _current_row = seasonal_df[seasonal_df['season_key'] == current_season_key]
-    _current_vert = _current_row.iloc[0]['vert_ft'] if not _current_row.empty else 0
-    _chart_header_with_goal(
-        "Season Vertical Feet", current=_current_vert, goal=goal_vert, unit_label="ft", color=SKI_BLUE,
-    )
-    st.plotly_chart(
-        make_season_vert_chart(seasonal_df, current_season_key, goal_vert=goal_vert, height=220, title=" "),
-    )
-
-    # --- 2. Season selector (e.g. "2025-2026") ---
-    # season_key is the start year; season_label is the full "YYYY-YYYY" string.
-    season_keys   = seasonal_df['season_key'].tolist()[::-1]
-    season_labels = seasonal_df['season_label'].tolist()[::-1]
-    label_to_key  = dict(zip(season_labels, season_keys))
-
-    # Seed session state to avoid index= / key= conflict on re-render
-    _cur_ski = st.session_state.get('ski_season_sel')
-    if _cur_ski not in season_labels:
-        default_label = next(
-            (lbl for lbl, k in zip(season_labels, season_keys) if k == current_season_key),
-            season_labels[0],
+        # --- 1. All-seasons overview chart (full width); header carries the
+        # season-goal readout since the chart already draws the goal as a
+        # dashed line — no need to repeat it as a block further down. ---
+        _current_row = seasonal_df[seasonal_df['season_key'] == current_season_key]
+        _current_vert = _current_row.iloc[0]['vert_ft'] if not _current_row.empty else 0
+        _chart_header_with_goal(
+            "Season Vertical Feet", current=_current_vert, goal=goal_vert, unit_label="ft", color=SKI_BLUE,
         )
-        st.session_state['ski_season_sel'] = default_label
-
-    selected_label = st.selectbox(
-        "Season", season_labels, key="ski_season_sel",
-    )
-    selected_key = label_to_key[selected_label]
-
-    # --- 3. Vert by Month chart (season months, spanning both calendar years) ---
-    monthly_season = _agg_ski_season_by_month(ski_df, selected_key, ski_start, ski_end)
-    if not monthly_season.empty:
         st.plotly_chart(
-            make_monthly_chart(monthly_season, 'vert_ft', 'ft', color=SKI_BLUE),
+            make_season_vert_chart(seasonal_df, current_season_key, goal_vert=goal_vert, height=220, title=" "),
         )
 
-    # --- 4. Stats box ---
-    row = seasonal_df[seasonal_df['season_key'] == selected_key].iloc[0]
-    equity_miles = row['vert_ft'] / ski_vert_per_mile if ski_vert_per_mile > 0 else 0
-    _stats_box([
-        ("Days on snow",   str(int(row['days']))),
-        ("Sessions",       str(int(row['sessions']))),
-        ("Total vert",     f"{row['vert_ft']:,.0f} ft"),
-        ("Max day",        f"{row['max_vert_day']:,.0f} ft"),
-        ("Avg vert / day", f"{row['avg_vert_day']:,.0f} ft"),
-        ("Equity miles",   f"{equity_miles:,.0f} mi"),
-    ])
+    # === Section: This season (period selector + charts) ===
+    with st.container(border=True):
+        # --- 2. Season selector (e.g. "2025-2026") ---
+        # season_key is the start year; season_label is the full "YYYY-YYYY" string.
+        season_keys   = seasonal_df['season_key'].tolist()[::-1]
+        season_labels = seasonal_df['season_label'].tolist()[::-1]
+        label_to_key  = dict(zip(season_labels, season_keys))
 
-    # --- Top 5 Ski Days (vertical feet) for the selected season ---
-    _season_key_per_row = ski_df['start_date_local'].apply(process_data._ski_season_key)
-    season_df = ski_df[_season_key_per_row == selected_key]
-    _render_longest_table(
-        season_df, 'elevation_feet',
-        lambda r: f"{r['elevation_feet']:,.0f} ft",
-        f"Top 5 Ski Days — {selected_label}", n=5,
-    )
+        # Seed session state to avoid index= / key= conflict on re-render
+        _cur_ski = st.session_state.get('ski_season_sel')
+        if _cur_ski not in season_labels:
+            default_label = next(
+                (lbl for lbl, k in zip(season_labels, season_keys) if k == current_season_key),
+                season_labels[0],
+            )
+            st.session_state['ski_season_sel'] = default_label
 
-    # --- 4b. Table of contents for the list sections below ---
-    _section_toc(
-        [("Most Recent Snow Activities", "most-recent-snow-activities"),
-         ("Biggest Snow Days",           "biggest-snow-days-all-seasons"),
-         ("Top Ten Months",             "top-ten-months-by-distance"),
-         ("Snow Days",                   "snow-days")],
-        SKI_BLUE,
-    )
+        selected_label = st.selectbox(
+            "Season", season_labels, key="ski_season_sel",
+        )
+        selected_key = label_to_key[selected_label]
 
-    # --- 5. Most Recent Snow Activities ---
-    st.divider()
-    _render_recent_table(
-        ski_df,
-        lambda r: f"{r['elevation_feet']:,.0f} ft vert",
-        "Most Recent Snow Activities",
-        key_prefix="ski",
-        widget="number",
-    )
+        # --- 3. Vert by Month chart (season months, spanning both calendar years) ---
+        monthly_season = _agg_ski_season_by_month(ski_df, selected_key, ski_start, ski_end)
+        if not monthly_season.empty:
+            st.plotly_chart(
+                make_monthly_chart(monthly_season, 'vert_ft', 'ft', color=SKI_BLUE),
+            )
 
-    # --- 6. Biggest Snow Days (All Seasons) ---
-    st.divider()
-    _render_longest_table(
-        ski_df, 'elevation_feet',
-        lambda r: f"{r['elevation_feet']:,.0f} ft",
-        "Biggest Snow Days (All Seasons)",
-    )
+        # --- 4. Stats box ---
+        row = seasonal_df[seasonal_df['season_key'] == selected_key].iloc[0]
+        equity_miles = row['vert_ft'] / ski_vert_per_mile if ski_vert_per_mile > 0 else 0
+        _stats_box([
+            ("Days on snow",   str(int(row['days']))),
+            ("Sessions",       str(int(row['sessions']))),
+            ("Total vert",     f"{row['vert_ft']:,.0f} ft"),
+            ("Max day",        f"{row['max_vert_day']:,.0f} ft"),
+            ("Avg vert / day", f"{row['avg_vert_day']:,.0f} ft"),
+            ("Equity miles",   f"{equity_miles:,.0f} mi"),
+        ])
 
-    # --- 6b. Top Ten Months by vertical feet ---
-    st.divider()
-    _render_top_months_table(ski_months_ranked, lambda v: f"{v:,.0f} ft")
+        # --- Top 5 Ski Days (vertical feet) for the selected season ---
+        _season_key_per_row = ski_df['start_date_local'].apply(process_data._ski_season_key)
+        season_df = ski_df[_season_key_per_row == selected_key]
+        _render_longest_table(
+            season_df, 'elevation_feet',
+            lambda r: f"{r['elevation_feet']:,.0f} ft",
+            f"Top 5 Ski Days — {selected_label}", n=5,
+        )
 
-    # --- 7. All Snow Days (reverse chronological) ---
-    st.divider()
-    st.subheader("Snow Days")
-    all_days = process_data.get_ski_days_table(ski_df)
-    if all_days.empty:
-        st.info("No snow days found.")
-        return
+        # --- 4b. Table of contents for the list sections below ---
+        _section_toc(
+            [("Most Recent Snow Activities", "most-recent-snow-activities"),
+             ("Biggest Snow Days",           "biggest-snow-days-all-seasons"),
+             ("Top Ten Months",             "top-ten-months-by-distance"),
+             ("Snow Days",                   "snow-days")],
+            SKI_BLUE,
+        )
 
-    display = all_days.copy()
-    display['Date']      = pd.to_datetime(display['date']).apply(_fmt_date_long)
-    display['Season']    = display['season_label']
-    display['Activity']  = display['activity']
-    display['Type']      = display['type']
-    display['Vert (ft)'] = display['vert_ft'].apply(lambda x: f"{x:,.0f}")
-    display['Dist (mi)'] = display['distance_mi'].apply(lambda x: f"{x:.1f}")
-    display['Hours']     = display['hours'].apply(lambda x: f"{x:.1f}")
-    st.dataframe(
-        display[['Date', 'Season', 'Activity', 'Type', 'Vert (ft)', 'Dist (mi)', 'Hours']],
-        hide_index=True,
-    )
+    # === Section: Detail tables ===
+    with st.container(border=True):
+        # --- 5. Most Recent Snow Activities ---
+        _render_recent_table(
+            ski_df,
+            lambda r: f"{r['elevation_feet']:,.0f} ft vert",
+            "Most Recent Snow Activities",
+            key_prefix="ski",
+            widget="number",
+        )
+
+        # --- 6. Biggest Snow Days (All Seasons) ---
+        st.divider()
+        _render_longest_table(
+            ski_df, 'elevation_feet',
+            lambda r: f"{r['elevation_feet']:,.0f} ft",
+            "Biggest Snow Days (All Seasons)",
+        )
+
+        # --- 6b. Top Ten Months by vertical feet ---
+        st.divider()
+        _render_top_months_table(ski_months_ranked, lambda v: f"{v:,.0f} ft")
+
+        # --- 7. All Snow Days (reverse chronological) ---
+        st.divider()
+        st.subheader("Snow Days")
+        all_days = process_data.get_ski_days_table(ski_df)
+        if all_days.empty:
+            st.info("No snow days found.")
+            return
+
+        display = all_days.copy()
+        display['Date']      = pd.to_datetime(display['date']).apply(_fmt_date_long)
+        display['Season']    = display['season_label']
+        display['Activity']  = display['activity']
+        display['Type']      = display['type']
+        display['Vert (ft)'] = display['vert_ft'].apply(lambda x: f"{x:,.0f}")
+        display['Dist (mi)'] = display['distance_mi'].apply(lambda x: f"{x:.1f}")
+        display['Hours']     = display['hours'].apply(lambda x: f"{x:.1f}")
+        st.dataframe(
+            display[['Date', 'Season', 'Activity', 'Type', 'Vert (ft)', 'Dist (mi)', 'Hours']],
+            hide_index=True,
+        )
 
     # --- 8. Experiments: Month/Week comparison tooling ---
     st.divider()
@@ -1116,157 +1151,162 @@ def render_swim_tab(swim_df, settings, df=None):
     swim_end   = seasons.get('swim_end_month', 9)
     current_year = date.today().year
 
-    # --- 1. All-time stats line (left) + pool image (right) ---
-    yearly = _agg_swim_by_year(swim_df)
-    swim_months_ranked = process_data.rank_months_by_distance(swim_df, 'distance')
-    # Units are chosen by the radio further down; read the current choice from
-    # session_state so this top line already reflects it on rerun.
-    _unit   = st.session_state.get('swim_unit', 'Meters')
-    _mult   = 1.0 if _unit == 'Meters' else 1.09361
-    _dlabel = 'm' if _unit == 'Meters' else 'yd'
-    _stats_col, _img_col = st.columns([2.7, 1.3])
-    with _stats_col:
+    # === Section: All-time snapshot ===
+    with st.container(border=True):
+        # --- 1. All-time stats line (left) + pool image (right) ---
+        yearly = _agg_swim_by_year(swim_df)
+        swim_months_ranked = process_data.rank_months_by_distance(swim_df, 'distance')
+        # Units are chosen by the radio further down; read the current choice from
+        # session_state so this top line already reflects it on rerun.
+        _unit   = st.session_state.get('swim_unit', 'Meters')
+        _mult   = 1.0 if _unit == 'Meters' else 1.09361
+        _dlabel = 'm' if _unit == 'Meters' else 'yd'
+        _stats_col, _img_col = st.columns([2.7, 1.3])
+        with _stats_col:
+            if not yearly.empty:
+                _all_m    = yearly['meters'].sum()
+                _all_sw   = int(yearly['swims'].sum())
+                _best     = yearly.loc[yearly['meters'].idxmax()]
+                _long     = swim_df.loc[swim_df['distance'].idxmax()]
+                _lm       = swim_months_ranked.iloc[0]
+                _swim_per = settings.get('conversions', {}).get(
+                    'swim_meters_per_ref_unit',
+                    settings.get('conversions', {}).get('swim_meters_per_mile', 100))
+                _eq       = _all_m / _swim_per if _swim_per else 0
+                _avg      = (_all_m / _all_sw) if _all_sw else 0
+                _all_secs = swim_df['moving_time'].sum()
+                _all_hrs  = _all_secs / 3600
+                _all_time_line(
+                    distance=f"{_all_m * _mult:,.0f} {_dlabel}",
+                    hours=f"{_all_hrs:,.0f} h",
+                    activities=f"{_all_sw:,}",
+                    seasons=str(swim_df['year'].nunique()),
+                    best_year=f"{int(_best['year'])} · {_best['meters'] * _mult:,.0f} {_dlabel}",
+                    largest_month=f"{_lm['value'] * _mult:,.0f} {_dlabel} · {_lm['label']}",
+                    highest=f"{_long['distance'] * _mult:,.0f} {_dlabel} · {_fmt_date(_long['start_date_local'])}",
+                    equity=f"{_eq:,.0f}",
+                    avg=f"{_avg * _mult:,.0f} {_dlabel}",
+                    avg_time=_fmt_time(_all_secs / _all_sw) if _all_sw else "—",
+                    avg_speed=f"{_all_m * _mult / _all_hrs:,.0f} {_dlabel}/h" if _all_hrs else "—",
+                )
+        with _img_col:
+            _img_path = (settings.get('images', {}) or {}).get('swim_path') or config.SWIM_DEFAULT_IMAGE
+            if os.path.exists(_img_path):
+                st.image(_img_path, width="stretch")
+
+        # --- 2. Multi-year overview chart (full width) ---
         if not yearly.empty:
-            _all_m    = yearly['meters'].sum()
-            _all_sw   = int(yearly['swims'].sum())
-            _best     = yearly.loc[yearly['meters'].idxmax()]
-            _long     = swim_df.loc[swim_df['distance'].idxmax()]
-            _lm       = swim_months_ranked.iloc[0]
-            _swim_per = settings.get('conversions', {}).get(
-                'swim_meters_per_ref_unit',
-                settings.get('conversions', {}).get('swim_meters_per_mile', 100))
-            _eq       = _all_m / _swim_per if _swim_per else 0
-            _avg      = (_all_m / _all_sw) if _all_sw else 0
-            _all_secs = swim_df['moving_time'].sum()
-            _all_hrs  = _all_secs / 3600
-            _all_time_line(
-                distance=f"{_all_m * _mult:,.0f} {_dlabel}",
-                hours=f"{_all_hrs:,.0f} h",
-                activities=f"{_all_sw:,}",
-                seasons=str(swim_df['year'].nunique()),
-                best_year=f"{int(_best['year'])} · {_best['meters'] * _mult:,.0f} {_dlabel}",
-                largest_month=f"{_lm['value'] * _mult:,.0f} {_dlabel} · {_lm['label']}",
-                highest=f"{_long['distance'] * _mult:,.0f} {_dlabel} · {_fmt_date(_long['start_date_local'])}",
-                equity=f"{_eq:,.0f}",
-                avg=f"{_avg * _mult:,.0f} {_dlabel}",
-                avg_time=_fmt_time(_all_secs / _all_sw) if _all_sw else "—",
-                avg_speed=f"{_all_m * _mult / _all_hrs:,.0f} {_dlabel}/h" if _all_hrs else "—",
+            _dc = 'meters' if _unit == 'Meters' else 'yards'
+            yearly_plot = yearly.rename(columns={_dc: '_dist'})[['year', 'swims', '_dist']].copy()
+            yearly_plot.columns = ['year', 'swims', _dc]
+            st.plotly_chart(
+                make_swim_year_chart(yearly_plot, current_year, height=220),
             )
-    with _img_col:
-        _img_path = (settings.get('images', {}) or {}).get('swim_path') or config.SWIM_DEFAULT_IMAGE
-        if os.path.exists(_img_path):
-            st.image(_img_path, width="stretch")
 
-    # --- 2. Multi-year overview chart (full width) ---
-    if not yearly.empty:
-        _dc = 'meters' if _unit == 'Meters' else 'yards'
-        yearly_plot = yearly.rename(columns={_dc: '_dist'})[['year', 'swims', '_dist']].copy()
-        yearly_plot.columns = ['year', 'swims', _dc]
-        st.plotly_chart(
-            make_swim_year_chart(yearly_plot, current_year, height=220),
+    # === Section: This period (period selector + charts) ===
+    with st.container(border=True):
+        # --- 3. Controls: Year + Units ---
+        ctrl_l, ctrl_r = st.columns(2)
+        with ctrl_l:
+            years = sorted(swim_df['year'].unique().tolist(), reverse=True)
+            year_options = ["All time"] + [str(y) for y in years]
+            _cur_year_label = st.session_state.get('swim_year')
+            if _cur_year_label not in year_options:
+                st.session_state['swim_year'] = str(current_year) if str(current_year) in year_options else "All time"
+            selected_year_label = st.selectbox("Year", year_options, key="swim_year")
+        with ctrl_r:
+            unit = st.radio("Units", ["Meters", "Yards"], horizontal=True, key="swim_unit")
+
+        is_all_time = selected_year_label == "All time"
+        selected_year = None if is_all_time else int(selected_year_label)
+        period_df  = swim_df if is_all_time else swim_df[swim_df['year'] == selected_year]
+
+        dist_col   = 'meters' if unit == 'Meters' else 'yards'
+        dist_label = 'm' if unit == 'Meters' else 'yd'
+        mult       = 1.0 if unit == 'Meters' else 1.09361
+        goal_val   = monthly_goal_m * mult
+
+        monthly_all = _agg_swim_by_month(swim_df, selected_year)
+        if swim_start <= swim_end:
+            swim_months = list(range(swim_start, swim_end + 1))
+        else:
+            swim_months = list(range(swim_start, 13)) + list(range(1, swim_end + 1))
+        _swim_order = {m: i for i, m in enumerate(swim_months)}
+        monthly = (
+            monthly_all[monthly_all['month'].isin(swim_months)]
+            .copy()
+            .assign(_order=lambda d: d['month'].map(_swim_order))
+            .sort_values('_order')
+            .drop(columns='_order')
         )
 
-    # --- 3. Controls: Year + Units ---
-    ctrl_l, ctrl_r = st.columns(2)
-    with ctrl_l:
-        years = sorted(swim_df['year'].unique().tolist(), reverse=True)
-        year_options = ["All time"] + [str(y) for y in years]
-        _cur_year_label = st.session_state.get('swim_year')
-        if _cur_year_label not in year_options:
-            st.session_state['swim_year'] = str(current_year) if str(current_year) in year_options else "All time"
-        selected_year_label = st.selectbox("Year", year_options, key="swim_year")
-    with ctrl_r:
-        unit = st.radio("Units", ["Meters", "Yards"], horizontal=True, key="swim_unit")
+        # --- Period stats (used by both the goal header and the stats box) ---
+        total_dist  = period_df['distance'].sum() * mult
+        total_swims = len(period_df)
+        avg_dist    = (total_dist / total_swims) if total_swims else 0
+        months_with_data = int((monthly[dist_col] > 0).sum())
+        avg_monthly = total_dist / months_with_data if months_with_data else 0
+        max_swim    = period_df['distance'].max() * mult if not period_df.empty else 0
 
-    is_all_time = selected_year_label == "All time"
-    selected_year = None if is_all_time else int(selected_year_label)
-    period_df  = swim_df if is_all_time else swim_df[swim_df['year'] == selected_year]
-
-    dist_col   = 'meters' if unit == 'Meters' else 'yards'
-    dist_label = 'm' if unit == 'Meters' else 'yd'
-    mult       = 1.0 if unit == 'Meters' else 1.09361
-    goal_val   = monthly_goal_m * mult
-
-    monthly_all = _agg_swim_by_month(swim_df, selected_year)
-    if swim_start <= swim_end:
-        swim_months = list(range(swim_start, swim_end + 1))
-    else:
-        swim_months = list(range(swim_start, 13)) + list(range(1, swim_end + 1))
-    _swim_order = {m: i for i, m in enumerate(swim_months)}
-    monthly = (
-        monthly_all[monthly_all['month'].isin(swim_months)]
-        .copy()
-        .assign(_order=lambda d: d['month'].map(_swim_order))
-        .sort_values('_order')
-        .drop(columns='_order')
-    )
-
-    # --- Period stats (used by both the goal header and the stats box) ---
-    total_dist  = period_df['distance'].sum() * mult
-    total_swims = len(period_df)
-    avg_dist    = (total_dist / total_swims) if total_swims else 0
-    months_with_data = int((monthly[dist_col] > 0).sum())
-    avg_monthly = total_dist / months_with_data if months_with_data else 0
-    max_swim    = period_df['distance'].max() * mult if not period_df.empty else 0
-
-    # --- Distance by Month chart, header carries the goal-pace readout ---
-    _period_label = "All Time" if is_all_time else str(selected_year)
-    _chart_header_with_goal(
-        f"{_period_label} Distance by Month ({dist_col})",
-        current=avg_monthly, goal=goal_val, unit_label=f"{dist_label} avg", color=SWIM_TEAL,
-    )
-    st.plotly_chart(
-        make_monthly_chart(monthly, dist_col, dist_label, goal=goal_val, color=SWIM_TEAL, title=" ",
-                            yaxis_label=unit),
-    )
-
-    _stats_box([
-        ("Total Distance", f"{total_dist:,.0f} {dist_label}"),
-        ("Swims",          str(total_swims)),
-        ("Longest Swim",   f"{max_swim:,.0f} {dist_label}"),
-        ("Avg per Swim",   f"{avg_dist:,.0f} {dist_label}"),
-        ("Avg per Month",  f"{avg_monthly:,.0f} {dist_label}"),
-    ])
-
-    fmt_swim = (lambda r: f"{r['distance']:,.0f} m") if unit == 'Meters' else (lambda r: f"{r['distance'] * 1.09361:,.0f} yd")
-
-    # --- Top 5 Swims for the selected period ---
-    _render_longest_table(period_df, 'distance', fmt_swim, f"Top 5 Swims — {_period_label}", n=5)
-
-    # --- 6. Table of contents for the list sections below ---
-    _section_toc(
-        [("All-Time Distance by Month", "all-time-distance-by-month"),
-         ("Most Recent Swims",       "most-recent-swims"),
-         ("All-time Longest Swims",  "all-time-longest-swims"),
-         ("Top Ten Months",          "top-ten-months-by-distance")],
-        SWIM_TEAL,
-    )
-
-    # --- 7. All-time monthly pattern (which calendar months you actually swim) ---
-    st.divider()
-    st.subheader("All-Time Distance by Month")
-    _alltime_monthly_swim = _agg_swim_by_month(swim_df, None)
-    _dc_all = 'meters' if _unit == 'Meters' else 'yards'
-    if _alltime_monthly_swim['swims'].sum() > 0:
+        # --- Distance by Month chart, header carries the goal-pace readout ---
+        _period_label = "All Time" if is_all_time else str(selected_year)
+        _chart_header_with_goal(
+            f"{_period_label} Distance by Month ({dist_col})",
+            current=avg_monthly, goal=goal_val, unit_label=f"{dist_label} avg", color=SWIM_TEAL,
+        )
         st.plotly_chart(
-            make_monthly_chart(
-                _alltime_monthly_swim, _dc_all, _dlabel,
-                title=" ", color=SWIM_TEAL, yaxis_label=_unit,
-            ),
+            make_monthly_chart(monthly, dist_col, dist_label, goal=goal_val, color=SWIM_TEAL, title=" ",
+                                yaxis_label=unit),
         )
 
-    # --- 8. Most Recent Swims ---
-    st.divider()
-    _render_recent_table(swim_df, fmt_swim, "Most Recent Swims", key_prefix="swim", widget="number")
+        _stats_box([
+            ("Total Distance", f"{total_dist:,.0f} {dist_label}"),
+            ("Swims",          str(total_swims)),
+            ("Longest Swim",   f"{max_swim:,.0f} {dist_label}"),
+            ("Avg per Swim",   f"{avg_dist:,.0f} {dist_label}"),
+            ("Avg per Month",  f"{avg_monthly:,.0f} {dist_label}"),
+        ])
 
-    # --- 9. All-time Longest Swims ---
-    st.divider()
-    _render_longest_table(swim_df, 'distance', fmt_swim, "All-time Longest Swims")
+        fmt_swim = (lambda r: f"{r['distance']:,.0f} m") if unit == 'Meters' else (lambda r: f"{r['distance'] * 1.09361:,.0f} yd")
 
-    # --- 10. Top Ten Months by distance ---
-    st.divider()
-    _swim_month_fmt = (lambda v: f"{v:,.0f} m") if unit == 'Meters' else (lambda v: f"{v * 1.09361:,.0f} yd")
-    _render_top_months_table(swim_months_ranked, _swim_month_fmt)
+        # --- Top 5 Swims for the selected period ---
+        _render_longest_table(period_df, 'distance', fmt_swim, f"Top 5 Swims — {_period_label}", n=5)
+
+        # --- 6. Table of contents for the list sections below ---
+        _section_toc(
+            [("All-Time Distance by Month", "all-time-distance-by-month"),
+             ("Most Recent Swims",       "most-recent-swims"),
+             ("All-time Longest Swims",  "all-time-longest-swims"),
+             ("Top Ten Months",          "top-ten-months-by-distance")],
+            SWIM_TEAL,
+        )
+
+    # === Section: Detail tables ===
+    with st.container(border=True):
+        # --- 7. All-time monthly pattern (which calendar months you actually swim) ---
+        st.subheader("All-Time Distance by Month")
+        _alltime_monthly_swim = _agg_swim_by_month(swim_df, None)
+        _dc_all = 'meters' if _unit == 'Meters' else 'yards'
+        if _alltime_monthly_swim['swims'].sum() > 0:
+            st.plotly_chart(
+                make_monthly_chart(
+                    _alltime_monthly_swim, _dc_all, _dlabel,
+                    title=" ", color=SWIM_TEAL, yaxis_label=_unit,
+                ),
+            )
+
+        # --- 8. Most Recent Swims ---
+        st.divider()
+        _render_recent_table(swim_df, fmt_swim, "Most Recent Swims", key_prefix="swim", widget="number")
+
+        # --- 9. All-time Longest Swims ---
+        st.divider()
+        _render_longest_table(swim_df, 'distance', fmt_swim, "All-time Longest Swims")
+
+        # --- 10. Top Ten Months by distance ---
+        st.divider()
+        _swim_month_fmt = (lambda v: f"{v:,.0f} m") if unit == 'Meters' else (lambda v: f"{v * 1.09361:,.0f} yd")
+        _render_top_months_table(swim_months_ranked, _swim_month_fmt)
 
     # --- 11. Experiments: Month/Week comparison tooling ---
     st.divider()
@@ -1321,109 +1361,114 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
     yearly_all = process_data.aggregate_by_year(filtered_df)
     months_ranked = process_data.rank_months_by_distance(filtered_df, 'distance_miles')
 
-    # --- All-time stats line (full width — no photo for this sport) ---
-    if not filtered_df.empty and not yearly_all.empty:
-        _tot   = yearly_all['miles'].sum()
-        _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
-        _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
-        _lm    = months_ranked.iloc[0]
-        _ref   = settings.get('reference_sport', 'Bike')
-        _rate_key = {'run': 'run_miles_per_ref_unit', 'hike': 'hike_miles_per_ref_unit'}.get(sport_key)
-        _rate  = settings.get('conversions', {}).get(_rate_key, 1.0) if _rate_key else 1.0
-        _eq    = 0 if _ref == ref_label else (_tot / _rate if _rate else 0)
-        _hrs   = yearly_all['hours'].sum()
-        _cnt   = int(yearly_all['count'].sum())
-        _all_time_line(
-            distance=f"{_tot:,.0f} mi",
-            hours=f"{_hrs:,.0f} h",
-            activities=f"{_cnt:,}",
-            seasons=str(filtered_df['year'].nunique()),
-            best_year=f"{int(_best['year'])} · {_best['miles']:,.0f} mi",
-            largest_month=f"{_lm['value']:,.0f} mi · {_lm['label']}",
-            highest=f"{_long['distance_miles']:,.1f} mi · {_fmt_date(_long['start_date_local'])}",
-            equity=f"{_eq:,.0f}",
-            avg=f"{filtered_df['distance_miles'].mean():,.1f} mi",
-            avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
-            avg_speed=f"{_tot / _hrs:,.1f} mi/h" if _hrs else "—",
+    # === Section: All-time snapshot ===
+    with st.container(border=True):
+        # --- All-time stats line (full width — no photo for this sport) ---
+        if not filtered_df.empty and not yearly_all.empty:
+            _tot   = yearly_all['miles'].sum()
+            _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
+            _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
+            _lm    = months_ranked.iloc[0]
+            _ref   = settings.get('reference_sport', 'Bike')
+            _rate_key = {'run': 'run_miles_per_ref_unit', 'hike': 'hike_miles_per_ref_unit'}.get(sport_key)
+            _rate  = settings.get('conversions', {}).get(_rate_key, 1.0) if _rate_key else 1.0
+            _eq    = 0 if _ref == ref_label else (_tot / _rate if _rate else 0)
+            _hrs   = yearly_all['hours'].sum()
+            _cnt   = int(yearly_all['count'].sum())
+            _all_time_line(
+                distance=f"{_tot:,.0f} mi",
+                hours=f"{_hrs:,.0f} h",
+                activities=f"{_cnt:,}",
+                seasons=str(filtered_df['year'].nunique()),
+                best_year=f"{int(_best['year'])} · {_best['miles']:,.0f} mi",
+                largest_month=f"{_lm['value']:,.0f} mi · {_lm['label']}",
+                highest=f"{_long['distance_miles']:,.1f} mi · {_fmt_date(_long['start_date_local'])}",
+                equity=f"{_eq:,.0f}",
+                avg=f"{filtered_df['distance_miles'].mean():,.1f} mi",
+                avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
+                avg_speed=f"{_tot / _hrs:,.1f} mi/h" if _hrs else "—",
+            )
+
+        # --- Top gear by all-time miles (unaffected by the gear filter below) ---
+        if has_gear:
+            _gear_totals = (
+                df.groupby('gear_id')['distance_miles'].sum()
+                .sort_values(ascending=False)
+                .head(4)
+            )
+            if not _gear_totals.empty:
+                st.markdown(f"**Top {gear_noun} — All-Time Miles**")
+                _stats_box([
+                    (gear_map.get(gid, gid), f"{mi:,.0f} mi")
+                    for gid, mi in _gear_totals.items()
+                ])
+
+        # --- Annual distance chart (full width) ---
+        _yearly_unfiltered = process_data.aggregate_by_year(df)
+        if not _yearly_unfiltered.empty:
+            st.plotly_chart(
+                make_year_dist_chart(_yearly_unfiltered, 'miles', 'Miles', current_year, height=220,
+                                     color=color, color_light=color_light),
+            )
+
+        # --- All-time monthly pattern ---
+        _alltime_monthly = process_data.aggregate_bike_by_month(filtered_df)
+        if _alltime_monthly['count'].sum() > 0:
+            st.plotly_chart(
+                make_monthly_chart(
+                    _alltime_monthly, 'miles', 'Miles',
+                    title="All-Time Miles by Month", color=color,
+                ),
+            )
+
+    # === Section: This year (period selector + charts) ===
+    with st.container(border=True):
+        # --- Year section: selector + monthly chart + stats box ---
+        available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
+        year_key = f'{sport_key}_year'
+        _cur_yr = st.session_state.get(year_key)
+        if _cur_yr not in available_years:
+            st.session_state[year_key] = available_years[0] if available_years else None
+        selected_year = st.selectbox("Year", available_years, key=year_key)
+
+        if selected_year is not None and not yearly_all.empty:
+            yr_row = yearly_all[yearly_all['year'] == selected_year]
+            max_dist = filtered_df[filtered_df['year'] == selected_year]['distance_miles'].max() \
+                       if not filtered_df[filtered_df['year'] == selected_year].empty else 0
+
+            monthly = process_data.aggregate_bike_by_month(filtered_df, selected_year)
+            st.plotly_chart(
+                make_monthly_chart(monthly, 'miles', 'Miles', color=color),
+            )
+
+            if not yr_row.empty:
+                r = yr_row.iloc[0]
+                _stats_box([
+                    (f"{selected_year} Distance", f"{r['miles']:,.0f} mi"),
+                    ("Longest",                   f"{max_dist:,.1f} mi"),
+                    ("Hours",                     f"{r['hours']:,.0f} h"),
+                    (count_noun,                  f"{int(r['count']):,}"),
+                ])
+
+        # --- Table of contents for the list sections below ---
+        _section_toc(
+            [(f"Most Recent {count_noun}", f"most-recent-{count_noun.lower()}"),
+             (f"Longest {count_noun}",     f"longest-{count_noun.lower()}"),
+             ("Top Ten Months",            "top-ten-months-by-distance")],
+            color,
         )
-
-    # --- Top gear by all-time miles (unaffected by the gear filter below) ---
-    if has_gear:
-        _gear_totals = (
-            df.groupby('gear_id')['distance_miles'].sum()
-            .sort_values(ascending=False)
-            .head(4)
-        )
-        if not _gear_totals.empty:
-            st.markdown(f"**Top {gear_noun} — All-Time Miles**")
-            _stats_box([
-                (gear_map.get(gid, gid), f"{mi:,.0f} mi")
-                for gid, mi in _gear_totals.items()
-            ])
-
-    # --- Annual distance chart (full width) ---
-    _yearly_unfiltered = process_data.aggregate_by_year(df)
-    if not _yearly_unfiltered.empty:
-        st.plotly_chart(
-            make_year_dist_chart(_yearly_unfiltered, 'miles', 'Miles', current_year, height=220,
-                                 color=color, color_light=color_light),
-        )
-
-    # --- All-time monthly pattern ---
-    _alltime_monthly = process_data.aggregate_bike_by_month(filtered_df)
-    if _alltime_monthly['count'].sum() > 0:
-        st.plotly_chart(
-            make_monthly_chart(
-                _alltime_monthly, 'miles', 'Miles',
-                title="All-Time Miles by Month", color=color,
-            ),
-        )
-
-    # --- Year section: selector + monthly chart + stats box ---
-    available_years = sorted(filtered_df['year'].unique().tolist(), reverse=True) if not filtered_df.empty else []
-    year_key = f'{sport_key}_year'
-    _cur_yr = st.session_state.get(year_key)
-    if _cur_yr not in available_years:
-        st.session_state[year_key] = available_years[0] if available_years else None
-    selected_year = st.selectbox("Year", available_years, key=year_key)
-
-    if selected_year is not None and not yearly_all.empty:
-        yr_row = yearly_all[yearly_all['year'] == selected_year]
-        max_dist = filtered_df[filtered_df['year'] == selected_year]['distance_miles'].max() \
-                   if not filtered_df[filtered_df['year'] == selected_year].empty else 0
-
-        monthly = process_data.aggregate_bike_by_month(filtered_df, selected_year)
-        st.plotly_chart(
-            make_monthly_chart(monthly, 'miles', 'Miles', color=color),
-        )
-
-        if not yr_row.empty:
-            r = yr_row.iloc[0]
-            _stats_box([
-                (f"{selected_year} Distance", f"{r['miles']:,.0f} mi"),
-                ("Longest",                   f"{max_dist:,.1f} mi"),
-                ("Hours",                     f"{r['hours']:,.0f} h"),
-                (count_noun,                  f"{int(r['count']):,}"),
-            ])
 
     fmt_activity = lambda r: f"{r['distance_miles']:,.1f} mi"
 
-    # --- Table of contents for the list sections below ---
-    _section_toc(
-        [(f"Most Recent {count_noun}", f"most-recent-{count_noun.lower()}"),
-         (f"Longest {count_noun}",     f"longest-{count_noun.lower()}"),
-         ("Top Ten Months",            "top-ten-months-by-distance")],
-        color,
-    )
+    # === Section: Detail tables ===
+    with st.container(border=True):
+        _render_recent_table(filtered_df, fmt_activity, f"Most Recent {count_noun}", key_prefix=sport_key)
 
-    st.divider()
-    _render_recent_table(filtered_df, fmt_activity, f"Most Recent {count_noun}", key_prefix=sport_key)
+        st.divider()
+        _render_longest_table(filtered_df, 'distance_miles', fmt_activity, f"Longest {count_noun}")
 
-    st.divider()
-    _render_longest_table(filtered_df, 'distance_miles', fmt_activity, f"Longest {count_noun}")
-
-    st.divider()
-    _render_top_months_table(months_ranked, lambda v: f"{v:,.0f} mi")
+        st.divider()
+        _render_top_months_table(months_ranked, lambda v: f"{v:,.0f} mi")
 
     # --- Gear filter (bottom), only if this sport has gear tagged ---
     if has_gear:
@@ -2762,12 +2807,9 @@ def render_data_sync(df):
     if st.button("🔄 Sync Now", type="primary", width="stretch"):
         _run_sync()
 
-    years = sorted(set(config.STRAVA_YEARS))
-    if years:
-        contiguous = years == list(range(years[0], years[-1] + 1))
-        span = (f"{years[0]}–{years[-1]}" if contiguous and len(years) > 1
-                else ", ".join(str(y) for y in years))
-        st.caption(f"Checking {span}")
+    if df is not None and not df.empty:
+        earliest = df['start_date_local'].min()
+        st.caption(f"Data starts on {_fmt_date(earliest)}")
 
 
 # ---------------------------------------------------------------------------

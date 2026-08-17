@@ -52,6 +52,23 @@ from src.config import BIKE_TYPES, GEAR_FALLBACKS, HIKE_TYPES, RUN_TYPES, SKI_TY
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="Every Effort")
 
+# Streamlit reserves a large top padding on the main content block (~6rem)
+# to clear its floating header toolbar (hamburger/deploy icons), which reads
+# as a big empty gap above every tab's title. Trim it down to just past the
+# toolbar's own height instead of the default oversized buffer. Needs
+# !important — Streamlit's own emotion-generated style on this same
+# [data-testid="stMainBlockContainer"] element otherwise wins the cascade.
+st.markdown(
+    """
+    <style>
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 3rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # ---------------------------------------------------------------------------
 # Data loading (cached)
@@ -2758,32 +2775,29 @@ def _fmt_datetime(dt):
 
 
 def _most_recent_activity_line(df):
-    """One-line summary of the latest logged activity: date/time, sport, distance."""
+    """One-line summary of the latest logged activity: its title and timestamp."""
     if df is None or df.empty:
         return None
     row = df.loc[df['start_date_local'].idxmax()]
+    name = row.get('name') or 'Activity'
     when = _fmt_datetime(row['start_date_local'])
-    sport = row.get('final_type') or 'Activity'
-    dist = row.get('distance_miles') or 0
-    if dist > 0.05:
-        return f"Latest: {when} · {sport} · {dist:,.1f} mi"
-    return f"Latest: {when} · {sport}"
+    return f"{name} · {when}"
 
 
 def render_data_sync(df):
     """Compact data-sync footer in the sidebar. Assumes the caller is already
-    inside the sidebar context (the nav block opens it). Keeps the 'Activities
-    in archive' count front and center — it's the number that's satisfying to
-    watch climb — and trims the rest to a single status line plus the button."""
+    inside the sidebar context (the nav block opens it). Condensed to a
+    few caption lines plus the button — no metric widget or section header,
+    since those cost the most vertical space for the least info; the
+    activity count is still bolded so it reads first."""
     st.divider()
-    st.markdown("**Data Sync**")
 
     _recent = _most_recent_activity_line(df)
 
     if config.DEMO_MODE:
         # Read-only demo build: bundled sanitized dataset, no Strava
         # credentials on the host, so live sync is unavailable by design.
-        st.metric("Activities in archive", f"{_archive_count():,}")
+        st.caption(f"**{_archive_count():,}** activities in archive")
         if _recent:
             st.caption(_recent)
         st.caption("Demo mode — read-only sample dataset; live sync is disabled.")
@@ -2792,24 +2806,23 @@ def render_data_sync(df):
     last = _load_last_sync()
     if last:
         total = last.get('activity_count_latest_fetch', 0)
-        st.metric("Activities in archive", f"{total:,}")
         age = _age_string(last.get('last_check', ''))
         new_ct = last.get('new_on_last_sync')
-        status = f"Synced {age}"
+        status = f"**{total:,}** activities · synced {age}"
         if new_ct:
-            status += f"  ·  ↑{new_ct} new"
+            status += f" · ↑{new_ct} new"
         st.caption(status)
         if _recent:
             st.caption(_recent)
     else:
         st.caption("No sync record yet — run `python run_pipeline.py` once.")
 
-    if st.button("🔄 Sync Now", type="primary", width="stretch"):
-        _run_sync()
-
     if df is not None and not df.empty:
         earliest = df['start_date_local'].min()
         st.caption(f"Data starts on {_fmt_date(earliest)}")
+
+    if st.button("🔄 Sync Now", type="primary", width="stretch"):
+        _run_sync()
 
 
 # ---------------------------------------------------------------------------
@@ -3463,9 +3476,9 @@ with st.sidebar:
            instead, so the sidebar can be narrowed without losing text. */
         [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {{
             height: auto !important;
-            min-height: 32px;
-            padding-top: 6px !important;
-            padding-bottom: 6px !important;
+            min-height: 26px;
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
         }}
         [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] > span:last-child {{
             height: auto !important;
@@ -3478,6 +3491,21 @@ with st.sidebar:
             height: auto !important;
             line-height: 1.25;
         }}
+        /* Vertical compacting — the sidebar stacks a lot of sections (View,
+           Dark mode, Data Sync, Settings, Tools, source link); Streamlit's
+           default block gap and hr margins add up to a very tall sidebar.
+           Tighten them here rather than restructuring the content itself.
+           Kept moderate (not maximally tight) — the first pass compressed
+           the Data Sync block too hard. */
+        [data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {{
+            gap: 0.75rem !important;
+        }}
+        [data-testid="stSidebar"] hr {{
+            margin: 0.75rem 0 !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {{
+            margin-bottom: 0.3rem !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -3486,7 +3514,6 @@ with st.sidebar:
         "<h2 style='margin:0 0 0.2rem 0;color:#FC4C02'>Every Effort</h2>",
         unsafe_allow_html=True,
     )
-    st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)
     st.markdown("**View**")
     for _p in _view_pages:
         st.page_link(_p)

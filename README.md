@@ -23,39 +23,47 @@ Data syncs directly from the Strava API and is stored locally — nothing leaves
 
 > **Not affiliated with, endorsed by, or sponsored by Strava.** This is an independent, unofficial project built against Strava's public API. "Strava" and the Strava logo are trademarks of Strava, Inc.
 
-![Every Effort dashboard — Snow tab](docs/screenshots/snow_tab.png)
+![Every Effort dashboard](docs/screenshots/app-ui.png)
 
 ---
 
 ## User guide
 
+A tour of the app from a user's point of view — what each tab shows and how the pieces fit together. If you just want to run your own copy, skip ahead to the [Developer guide](#developer-guide).
+
 ### Multi-sport dashboard
 
 The sidebar reads top-to-bottom: **View** (the five sport/summary pages), a Dark mode toggle, **Data Sync** (archive count, last-sync age, and the Sync Now button), **Settings**, **Tools**, and a link back to this repo at the bottom.
 
-![Sidebar View section — Bike, Snow, Swim, Combined, Wrapped Stories](docs/screenshots/sidebar_tabs.png)
+![Sidebar — View, Dark mode, Data Sync, Settings, Tools](docs/screenshots/main-sidebar.png)
 
-Each entry swaps the entire main panel for that page — no page reload, since it's all one Streamlit app. The screenshot at the top of this page is the **Snow** view, opened straight from that sidebar.
+Each entry swaps the entire main panel for that page — no page reload, since it's all one Streamlit app.
 
 ### Sport summaries
 
-Every sport view opens the same way: an all-time stats line, a full-width overview chart, a distance-by-month chart for the selected year, period/unit controls, and ranked tables for the selected period.
+Every sport view opens the same way: an all-time stats line and a full-width overview chart.
 
-**Bike** — all-time stats; a "top bikes" ranking by lifetime miles; an annual distance chart paired with a route-heatmap thumbnail; an all-time "which months do I ride" chart; Year/Month/Week breakdowns; ranked tables for recent rides, longest rides, and top months; a gear filter; and the full interactive route heatmap at the bottom.
+**Bike** — all-time stats; a "top bikes" ranking by lifetime miles; an annual distance chart paired with a route-heatmap thumbnail; an all-time "which months do I ride" chart; a gear filter; and the full interactive route heatmap at the bottom.
 
-![Bike tab](docs/screenshots/app-ui.png)
+![Bike tab — all-time stats and annual overview](docs/screenshots/bike.png)
 
-**Snow** — all-time stats in vertical feet; a season-by-season overview chart; a season detail view with goal progress and a vert-by-month chart; ranked tables for recent days, biggest days, and top months; and a full season log.
+**Snow** — all-time stats in vertical feet; a season-by-season overview chart; and a full season log.
 
-![Snow tab — season detail with goal progress and monthly vert](docs/screenshots/snow-2-ui.png)
+![Snow tab — all-time stats and season-by-season overview](docs/screenshots/snow.png)
 
-**Swim** — all-time stats; a multi-year overview chart; a Year/Units-controlled monthly breakdown with goal-pace tracking; and ranked tables for recent and longest swims.
+**Swim** — all-time stats and a multi-year overview chart.
 
-![Swim tab — all-time stats, annual and monthly distance](docs/screenshots/swim-1-ui.png)
+![Swim tab — all-time stats and annual overview](docs/screenshots/swim.png)
+
+### Exploring a period
+
+Below the all-time overview, every sport tab has its own period section — pick a year (or season for Snow, with an "All time" option for Swim), and get a distance-by-month chart with goal-pace tracking, plus ranked tables for recent activities, longest efforts, and top months, all scoped to that period.
+
+![Snow tab — season detail with goal progress and monthly vert](docs/screenshots/snow-period.png)
 
 ### Live data sync
 
-<img src="docs/screenshots/sidebar_datasync.png" alt="Data Sync sidebar section — archive count, last sync, latest activity, Sync Now" width="220" align="right">
+<img src="docs/screenshots/data-sync.png" alt="Data Sync sidebar section — archive count, last sync, latest activity, Sync Now" width="220" align="right">
 
 The sidebar shows the total archive count, how long ago the last sync ran, and a one-line summary of the most recent logged activity (date/time, sport, distance). Click **Sync Now** to pull new activities from Strava without leaving the browser — it runs an incremental fetch, clears the data cache, and reloads automatically so every chart reflects the new data immediately.
 
@@ -79,9 +87,13 @@ The **Combined** tab stacks equity miles by sport for each year so you can see t
 
 Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are manual equity declarations — they're listed separately and excluded from calculated totals to avoid double-counting.
 
-### Other tabs
+### Wrapped Stories
 
-**Wrapped Stories** — pick any rolling window (last 365 days, last 30 days, a specific year or month) and a sport filter to get a period-in-review summary: hero stats, top sports, monthly rhythm, an activity calendar, and a weekly-streak card. A "Play Wrapped Slides" button opens a swipeable story-card carousel for any calendar year, with an HTML download to share it outside the app.
+Pick any rolling window (last 365 days, last 30 days, a specific year or month) and a sport filter to get a period-in-review summary: hero stats, top sports, monthly rhythm, an activity calendar, and a weekly-streak card. A "Play Wrapped Slides" button opens a swipeable story-card carousel for any calendar year, with an HTML download to share it outside the app.
+
+### Tools and Settings
+
+![Tools and Settings](docs/screenshots/tools-and-settings.png)
 
 **Explore** — full-text search across all activities with date-range and sport-type filters. Results table with CSV download.
 
@@ -91,7 +103,9 @@ Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are man
 
 ---
 
-## Developer documentation
+## Developer guide
+
+For coders who want to set up their own copy of Every Effort against their own Strava data.
 
 This repository contains the code and content needed to deploy your own Every Effort app. This app was built as a Streamlit service.
 

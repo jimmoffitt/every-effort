@@ -1,8 +1,10 @@
 # Every Effort
 
-*A personal Strava dashboard for people who ride, ski, swim, run, and hike — and want to combine every effort into an one overall measurement of workout effort and be able to set goals across a mix of activity types.*
+*A personal dashboard for people who ride, ski, swim, run, and hike — and want to combine every effort into an one overall measurement of workout effort and be able to set goals across a mix of activity types.*
 
 I really enjoy biking. So a lot of my "how's this year going" questions are informed by my bike miles. I also really like to ride on snow and swim. A week of skiing or swimming doesn't produce a mileage number that means anything next to a bike ride. 
+
+I also really like the Strava app and appreciate that their platform provides APIs for retrieving your data. 
 
 This app's main reason for existing is one idea: **equity miles**, a common scalar that converts every sport's effort into the currency of whichever sport you actually care about, so "was this a better year than last year?" has a real answer no matter which sports made up your training.
 
@@ -53,11 +55,13 @@ Every sport view opens the same way: an all-time stats line, a full-width overvi
 
 ### Live data sync
 
+<img src="docs/screenshots/sidebar_datasync.png" alt="Data Sync sidebar section — archive count, last sync, latest activity, Sync Now" width="220" align="right">
+
 The sidebar shows the total archive count, how long ago the last sync ran, and a one-line summary of the most recent logged activity (date/time, sport, distance). Click **Sync Now** to pull new activities from Strava without leaving the browser — it runs an incremental fetch, clears the data cache, and reloads automatically so every chart reflects the new data immediately.
 
 Past years are fetched once and archived. Only the current year is re-checked on each sync, so a sync stays fast no matter how much history is in the archive.
 
-![Data Sync sidebar section — archive count, last sync, latest activity, Sync Now](docs/screenshots/sidebar_datasync.png)
+<br clear="right">
 
 ### Equity miles
 

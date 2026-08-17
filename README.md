@@ -1,12 +1,21 @@
 # Every Effort
 
-*A personal Strava dashboard for people who ride, ski, swim, run, and hike — and want one overall measurement for how their year is actually going.*
+*A personal Strava dashboard for people who ride, ski, swim, run, and hike — and want to combine every effort into an one overall measurement of workout effort and be able to set goals across a mix of activity types.*
 
-I bike. A lot. So most of my own sense of "how's this year going" naturally comes out in miles. But a week of skiing or swimming doesn't produce a mileage number that means anything next to a bike ride — and Strava's own "Wrapped" doesn't try to answer that. This app's whole reason for existing is one idea: **equity miles**, a common unit that converts every sport's effort into the currency of whichever sport you actually care about, so "was this a better year than last year?" has a real answer no matter which sports made up your training.
+I really enjoy biking. So a lot of my "how's this year going" questions are informed by my bike miles. I also really like to ride on snow and swim. A week of skiing or swimming doesn't produce a mileage number that means anything next to a bike ride. 
 
-Everything else — the sport tabs, the year-over-year comparisons, the "Wrapped"-style summary — is really just a shell around that one number.
+This app's main reason for existing is one idea: **equity miles**, a common scalar that converts every sport's effort into the currency of whichever sport you actually care about, so "was this a better year than last year?" has a real answer no matter which sports made up your training.
 
-A sidebar-driven Streamlit app: **View** pages for Bike, Snow, Swim, Running, and Hiking (pick which ones show up in Settings), a Combined cross-sport equity view, and a Wrapped-style summary; **Tools** for full-text activity search and data export; and a **Settings** area split into four focused sub-pages. Data syncs directly from the Strava API and is stored locally — nothing leaves your machine.
+Another seed was wanting to trigger a Wrapped story when I wanted and for any period of interest. And Strava's own "Wrapped" doesn't really focus much on "combined" measurements. 
+
+This prototype was built on top of Streamlit. This app is sidebar-driven: 
++ **View** pages for Bike, Snow, Swim, Running, and Hiking (pick which ones show up in Settings) 
++ **Combined** cross-sport equity view 
++ **Wrapped-style summary** 
++ **Tools** for full-text activity search and data export
++ **Settings** area split into four focused sub-pages 
+
+Data syncs directly from the Strava API and is stored locally — nothing leaves your machine.
 
 **🚀 Live demo: [every-effort.streamlit.app](https://every-effort.streamlit.app/)** — a read-only build with a sanitized copy of the real dataset (see [How the demo works](#how-the-demo-works)). Works nicely on a phone too: open it in Safari and use Share → *Add to Home Screen*.
 

@@ -91,15 +91,41 @@ Activities with equity markers in their name (`SEq`, `HEq`, `GEq`, etc.) are man
 
 Pick any rolling window (last 365 days, last 30 days, a specific year or month) and a sport filter to get a period-in-review summary: hero stats, top sports, monthly rhythm, an activity calendar, and a weekly-streak card. A "Play Wrapped Slides" button opens a swipeable story-card carousel for any calendar year, with an HTML download to share it outside the app.
 
-### Tools and Settings
+### Tools
 
-![Tools and Settings](docs/screenshots/tools-and-settings.png)
-
-**Explore** — full-text search across all activities with date-range and sport-type filters. Results table with CSV download.
+**Explore** — full-text search across all activities, with date-range and sport-type filters. Results table with CSV download.
 
 **Export** — annual summaries, monthly breakdowns, and a full activity table, each with PNG download and a combined ZIP.
 
-**Settings** — four focused sub-pages: **Sports** (which tabs show up, conversion rates, the reference sport, and each tab's default image), **Goals** (annual/monthly/seasonal targets), **Seasons** (ski and swim season boundaries), and **Map** (heatmap home location). Each sub-page saves independently, merging its slice into `data/settings.json`. Theme (dark/light) lives as a toggle in the sidebar itself, not in Settings.
+### Settings
+
+Settings splits into four independent pages — each has its own Save button that merges just its own slice into `data/settings.json`, so editing Goals never touches your Seasons settings, and vice versa. Theme (dark/light) lives as a toggle in the sidebar itself, not in Settings.
+
+![Settings nav in the sidebar](docs/screenshots/settings-nav.png)
+
+#### Sports
+
+Which sports get a dedicated View tab (Bike/Snow/Swim on by default, Running/Hiking off); the reference sport that equity miles are expressed in (Bike, Run, or Hike); the conversion rate from every other sport's native unit into that reference; and each tab's default photo (upload your own or point to a file path, falling back to the bundled defaults in `assets/`).
+
+![Sports settings page](docs/screenshots/settings-sports.png)
+
+#### Goals
+
+Annual and monthly equity-mile targets, plus two sport-specific goals: Ski's cumulative season vertical feet, and Swim's monthly meters. Bike's monthly mileage goal can be a fixed number, or "derived" — a total monthly target minus what Swim/Ski are expected to contribute that month, based on the Seasons boundaries and Sports conversion rates — with a live preview table of the resulting month-by-month bike targets.
+
+![Goals settings page](docs/screenshots/settings-goals.png)
+
+#### Seasons
+
+Which months count as "in season" for Ski and Swim (Bike, Run, and Hike don't have a season concept yet — every month counts). Controls what shows in each tab's monthly chart, and feeds Goals' derived bike-target calculation.
+
+![Seasons settings page](docs/screenshots/settings-seasons.png)
+
+#### Map
+
+An optional custom home location (lat/lon) so the Bike tab's route heatmap centers on home instead of the median of all your ride start points.
+
+![Map settings page](docs/screenshots/settings-map.png)
 
 ---
 

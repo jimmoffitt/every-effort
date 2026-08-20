@@ -93,6 +93,8 @@ Pick any rolling window (last 365 days, last 30 days, a specific year or month) 
 
 ### Tools
 
+![Tools nav in the sidebar](docs/screenshots/tools-nav.png)
+
 **Explore** — full-text search across all activities, with date-range and sport-type filters. Results table with CSV download.
 
 **Export** — annual summaries, monthly breakdowns, and a full activity table, each with PNG download and a combined ZIP.
@@ -105,9 +107,21 @@ Settings splits into four independent pages — each has its own Save button tha
 
 #### Sports
 
-Which sports get a dedicated View tab (Bike/Snow/Swim on by default, Running/Hiking off); the reference sport that equity miles are expressed in (Bike, Run, or Hike); the conversion rate from every other sport's native unit into that reference; and each tab's default photo (upload your own or point to a file path, falling back to the bundled defaults in `assets/`).
+Which sports get a dedicated View tab — Combined and Wrapped Stories always cover every sport regardless, this only controls which sports get their own tab (Bike/Snow/Swim on by default, Running/Hiking off).
 
-![Sports settings page](docs/screenshots/settings-sports.png)
+![Sports settings — Primary Sport Tabs](docs/screenshots/settings-sports-primary.png)
+
+The reference sport that equity miles are expressed in — Bike, Run, or Hike, all distance-based sports that can serve as the common unit.
+
+![Sports settings — Why Equity Miles and Reference Sport](docs/screenshots/settings-sports-reference.png)
+
+The conversion rate from every other sport's native unit into that reference — miles for Run/Hike/Paddle, meters for Swim, vertical feet for Ski.
+
+![Sports settings — Equity Mile Conversions](docs/screenshots/settings-sports-equity-miles.png)
+
+Each tab's default photo — upload your own or point to a file path, falling back to the bundled defaults in `assets/`.
+
+![Sports settings — Sport tab images](docs/screenshots/settings-sports-tab-images.png)
 
 #### Goals
 

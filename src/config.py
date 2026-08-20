@@ -40,6 +40,11 @@ def _bundled_default_image(name):
 SNOW_DEFAULT_IMAGE = _bundled_default_image('snow')
 SWIM_DEFAULT_IMAGE = _bundled_default_image('swim')
 BIKE_DEFAULT_IMAGE = _bundled_default_image('bike')
+# No bundled photo shipped yet for these two — resolves to assets/run.jpg /
+# assets/hike.jpg, which the Settings > Sports image picker gracefully shows
+# as "File not found" until one is added, same as any other missing default.
+RUN_DEFAULT_IMAGE  = _bundled_default_image('run')
+HIKE_DEFAULT_IMAGE = _bundled_default_image('hike')
 
 # 2. Define File Paths
 TOKEN_FILE = os.getenv('STRAVA_TOKEN_FILE', os.path.join(DATA_DIR, 'strava_tokens.json'))
@@ -145,6 +150,15 @@ DEFAULT_SETTINGS = {
         'ski_end_month':     5,  # May
         'swim_start_month':  5,  # May
         'swim_end_month':    9,  # September
+        # Bike/Run/Hike default to the full calendar year (no restriction) —
+        # unlike Ski/Swim, these sports aren't naturally seasonal, so nothing
+        # changes for existing users until they narrow one of these.
+        'bike_start_month': 1,   # January
+        'bike_end_month':   12,  # December
+        'run_start_month':  1,
+        'run_end_month':    12,
+        'hike_start_month': 1,
+        'hike_end_month':   12,
     },
     'home_location': {
         'enabled': False,
@@ -155,6 +169,8 @@ DEFAULT_SETTINGS = {
         'snow_path': None,   # None = use bundled SNOW_DEFAULT_IMAGE
         'swim_path': None,   # None = use bundled SWIM_DEFAULT_IMAGE
         'bike_path': None,   # None = use bundled BIKE_DEFAULT_IMAGE
+        'run_path':  None,   # None = use bundled RUN_DEFAULT_IMAGE
+        'hike_path': None,   # None = use bundled HIKE_DEFAULT_IMAGE
     },
     # Manual equity declarations: activities named with the equity convention
     # (e.g. "GEq 10" = 10 declared equity miles) for effort you want counted by

@@ -761,6 +761,24 @@ def _months_in_season(start, end):
     return list(range(start, 13)) + list(range(1, end + 1))
 
 
+def filter_monthly_to_season(monthly_df, start_month, end_month):
+    """Filter an already-aggregated monthly DataFrame (the aggregate_bike_by_month
+    shape — one row per month, with a 'month' column) down to just the months
+    in [start_month, end_month], reordered to season order (wraps past
+    December when start > end, e.g. Nov-May). Used to scope a sport's monthly
+    chart to its configured season boundary."""
+    months = _months_in_season(start_month, end_month)
+    order = {m: i for i, m in enumerate(months)}
+    return (
+        monthly_df[monthly_df['month'].isin(months)]
+        .copy()
+        .assign(_order=lambda d: d['month'].map(order))
+        .sort_values('_order')
+        .drop(columns='_order')
+        .reset_index(drop=True)
+    )
+
+
 def bike_monthly_goal_series(settings):
     """
     Per-month bike-miles target for the year, returned as a list of length 12

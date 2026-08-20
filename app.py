@@ -259,6 +259,21 @@ _agg_swim_by_month       = process_data.aggregate_swim_by_month
 _agg_ski_by_season       = process_data.aggregate_ski_by_season
 _agg_ski_season_by_month = process_data.aggregate_ski_season_by_month
 
+# The 5 primary sports, as (sport_tabs key, display label, icon, season key
+# prefix, image key prefix). Season/image key prefixes stay 'ski'/'snow' for
+# the Snow tab (matching settings keys that predate this list: ski_start_month,
+# images.snow_path) even though the display label is "Snow" — avoids a
+# settings-schema migration. Shared by nav-building, the Seasons settings
+# page, and the Sport tab images settings subsection — each filters this to
+# whichever sports are enabled in settings['sport_tabs'].
+_SPORT_TAB_SPECS = [
+    ('bike', 'Bike',    '🚴', 'bike', 'bike'),
+    ('snow', 'Snow',    '⛷️', 'ski',  'snow'),
+    ('swim', 'Swim',    '🏊', 'swim', 'swim'),
+    ('run',  'Running', '🏃', 'run',  'run'),
+    ('hike', 'Hiking',  '🥾', 'hike', 'hike'),
+]
+
 # ---------------------------------------------------------------------------
 # Shared render/formatting helpers, used across multiple tabs
 # ---------------------------------------------------------------------------
@@ -737,6 +752,9 @@ def render_bike_tab(bike_df, gear_map, settings):
     current_year = date.today().year
     _unit = st.session_state.get('bike_unit', 'Miles')
     _is_mi = _unit == 'Miles'
+    _bike_season = settings.get('seasons', {})
+    _bike_start_month = _bike_season.get('bike_start_month', 1)
+    _bike_end_month   = _bike_season.get('bike_end_month', 12)
 
     # Gear selection comes from session_state (the filter UI sits at the bottom).
     gear_ids = sorted(
@@ -823,6 +841,13 @@ def render_bike_tab(bike_df, gear_map, settings):
             _bike_goal_series = process_data.bike_monthly_goal_series(settings)
             if dist_col == 'km':
                 _bike_goal_series = [v * 1.60934 for v in _bike_goal_series]
+            monthly_bike = process_data.filter_monthly_to_season(
+                monthly_bike, _bike_start_month, _bike_end_month,
+            )
+            # Re-align the goal series (a flat Jan-Dec list) to match the
+            # filtered/reordered chart rows — filter_monthly_to_season may
+            # drop and reorder months.
+            _bike_goal_series = [_bike_goal_series[m - 1] for m in monthly_bike['month']]
             st.plotly_chart(
                 make_monthly_chart(monthly_bike, dist_col, dist_label, goal=_bike_goal_series),
             )
@@ -857,6 +882,9 @@ def render_bike_tab(bike_df, gear_map, settings):
         # --- All-time monthly pattern (which calendar months you actually ride) ---
         st.subheader("All-Time Distance by Month")
         _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
+        _alltime_monthly_bike = process_data.filter_monthly_to_season(
+            _alltime_monthly_bike, _bike_start_month, _bike_end_month,
+        )
         if _alltime_monthly_bike['count'].sum() > 0:
             st.plotly_chart(
                 make_monthly_chart(_alltime_monthly_bike, _dc, _dl, title=" "),
@@ -1189,7 +1217,8 @@ def render_swim_tab(swim_df, settings, df=None):
                 _swim_per = settings.get('conversions', {}).get(
                     'swim_meters_per_ref_unit',
                     settings.get('conversions', {}).get('swim_meters_per_mile', 100))
-                _eq       = _all_m / _swim_per if _swim_per else 0
+                _ref      = settings.get('reference_sport', 'Bike')
+                _eq       = 0 if _ref == 'Swim' else (_all_m / _swim_per if _swim_per else 0)
                 _avg      = (_all_m / _all_sw) if _all_sw else 0
                 _all_secs = swim_df['moving_time'].sum()
                 _all_hrs  = _all_secs / 3600
@@ -1358,6 +1387,9 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
         return
 
     current_year = date.today().year
+    _season = settings.get('seasons', {})
+    _season_start_month = _season.get(f'{sport_key}_start_month', 1)
+    _season_end_month   = _season.get(f'{sport_key}_end_month', 12)
 
     # Gear selection comes from session_state (the filter UI sits near the
     # bottom) — only meaningful if this sport actually has gear tagged.
@@ -1378,33 +1410,41 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
     yearly_all = process_data.aggregate_by_year(filtered_df)
     months_ranked = process_data.rank_months_by_distance(filtered_df, 'distance_miles')
 
+    _default_img_by_sport = {'run': config.RUN_DEFAULT_IMAGE, 'hike': config.HIKE_DEFAULT_IMAGE}
+
     # === Section: All-time snapshot ===
     with st.container(border=True):
-        # --- All-time stats line (full width — no photo for this sport) ---
-        if not filtered_df.empty and not yearly_all.empty:
-            _tot   = yearly_all['miles'].sum()
-            _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
-            _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
-            _lm    = months_ranked.iloc[0]
-            _ref   = settings.get('reference_sport', 'Bike')
-            _rate_key = {'run': 'run_miles_per_ref_unit', 'hike': 'hike_miles_per_ref_unit'}.get(sport_key)
-            _rate  = settings.get('conversions', {}).get(_rate_key, 1.0) if _rate_key else 1.0
-            _eq    = 0 if _ref == ref_label else (_tot / _rate if _rate else 0)
-            _hrs   = yearly_all['hours'].sum()
-            _cnt   = int(yearly_all['count'].sum())
-            _all_time_line(
-                distance=f"{_tot:,.0f} mi",
-                hours=f"{_hrs:,.0f} h",
-                activities=f"{_cnt:,}",
-                seasons=str(filtered_df['year'].nunique()),
-                best_year=f"{int(_best['year'])} · {_best['miles']:,.0f} mi",
-                largest_month=f"{_lm['value']:,.0f} mi · {_lm['label']}",
-                highest=f"{_long['distance_miles']:,.1f} mi · {_fmt_date(_long['start_date_local'])}",
-                equity=f"{_eq:,.0f}",
-                avg=f"{filtered_df['distance_miles'].mean():,.1f} mi",
-                avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
-                avg_speed=f"{_tot / _hrs:,.1f} mi/h" if _hrs else "—",
-            )
+        # --- All-time stats line (left) + sport photo (right) ---
+        _stats_col, _img_col = st.columns([2.7, 1.3])
+        with _stats_col:
+            if not filtered_df.empty and not yearly_all.empty:
+                _tot   = yearly_all['miles'].sum()
+                _best  = yearly_all.loc[yearly_all['miles'].idxmax()]
+                _long  = filtered_df.loc[filtered_df['distance_miles'].idxmax()]
+                _lm    = months_ranked.iloc[0]
+                _ref   = settings.get('reference_sport', 'Bike')
+                _rate_key = {'run': 'run_miles_per_ref_unit', 'hike': 'hike_miles_per_ref_unit'}.get(sport_key)
+                _rate  = settings.get('conversions', {}).get(_rate_key, 1.0) if _rate_key else 1.0
+                _eq    = 0 if _ref == ref_label else (_tot / _rate if _rate else 0)
+                _hrs   = yearly_all['hours'].sum()
+                _cnt   = int(yearly_all['count'].sum())
+                _all_time_line(
+                    distance=f"{_tot:,.0f} mi",
+                    hours=f"{_hrs:,.0f} h",
+                    activities=f"{_cnt:,}",
+                    seasons=str(filtered_df['year'].nunique()),
+                    best_year=f"{int(_best['year'])} · {_best['miles']:,.0f} mi",
+                    largest_month=f"{_lm['value']:,.0f} mi · {_lm['label']}",
+                    highest=f"{_long['distance_miles']:,.1f} mi · {_fmt_date(_long['start_date_local'])}",
+                    equity=f"{_eq:,.0f}",
+                    avg=f"{filtered_df['distance_miles'].mean():,.1f} mi",
+                    avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
+                    avg_speed=f"{_tot / _hrs:,.1f} mi/h" if _hrs else "—",
+                )
+        with _img_col:
+            _img_path = (settings.get('images', {}) or {}).get(f'{sport_key}_path') or _default_img_by_sport.get(sport_key)
+            if _img_path and os.path.exists(_img_path):
+                st.image(_img_path, width="stretch")
 
         # --- Top gear by all-time miles (unaffected by the gear filter below) ---
         if has_gear:
@@ -1430,6 +1470,9 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
 
         # --- All-time monthly pattern ---
         _alltime_monthly = process_data.aggregate_bike_by_month(filtered_df)
+        _alltime_monthly = process_data.filter_monthly_to_season(
+            _alltime_monthly, _season_start_month, _season_end_month,
+        )
         if _alltime_monthly['count'].sum() > 0:
             st.plotly_chart(
                 make_monthly_chart(
@@ -1454,6 +1497,9 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
                        if not filtered_df[filtered_df['year'] == selected_year].empty else 0
 
             monthly = process_data.aggregate_bike_by_month(filtered_df, selected_year)
+            monthly = process_data.filter_monthly_to_season(
+                monthly, _season_start_month, _season_end_month,
+            )
             st.plotly_chart(
                 make_monthly_chart(monthly, 'miles', 'Miles', color=color),
             )
@@ -1598,11 +1644,16 @@ def render_equity_tab(df, settings):
     conv = settings.get('conversions', {})
     swim_r = conv.get('swim_meters_per_ref_unit', 100)
     ski_r  = conv.get('ski_vert_per_ref_unit', 1000)
-    st.caption(
-        f"Conversion rates — {ref_label}: 1 mi = 1 equity mi  ·  "
-        f"Swim: {swim_r:,.0f} m = 1 equity mi  ·  "
-        f"Ski: {ski_r:,.0f} vert ft = 1 equity mi"
-    )
+    # Swim's own "X m = 1 equity mi" line below already covers it when Swim
+    # itself is the reference — the generic "{ref_label}: 1 mi = 1 equity mi"
+    # phrasing only applies to the mile-based reference sports (Bike/Run/Hike)
+    # and would otherwise print a wrong, duplicate Swim line.
+    _rate_parts = []
+    if ref_label != 'Swim':
+        _rate_parts.append(f"{ref_label}: 1 mi = 1 equity mi")
+    _rate_parts.append(f"Swim: {swim_r:,.0f} m = 1 equity mi")
+    _rate_parts.append(f"Ski: {ski_r:,.0f} vert ft = 1 equity mi")
+    st.caption("Conversion rates — " + "  ·  ".join(_rate_parts))
 
     # --- 4. Monthly breakdown ---
     monthly = process_data.aggregate_equity_by_month(df, selected_year, settings)
@@ -2910,7 +2961,7 @@ def render_settings_section(settings, section):
     saved_seasons = settings.get('seasons', {})
     saved_home    = settings.get('home_location', {})
     saved_images  = settings.get('images', {}) or {}
-    ref_options   = ["Bike", "Run", "Hike"]
+    ref_options   = ["Bike", "Run", "Hike", "Swim"]
     _bike_mode_options = ['fixed', 'derived']
     _month_nums   = list(range(1, 13))
     _month_names  = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -2959,10 +3010,10 @@ def render_settings_section(settings, section):
         st.subheader("Reference Sport")
         st.caption(
             "Equity miles are expressed in units of this sport. "
-            "Bike, Run, and Hike all use distance (miles) so they can serve as the "
-            "reference. Swim and Ski use different native units (meters / vertical "
-            "feet) — their conversion rates below always express how many native "
-            "units equal one equity mile."
+            "Bike, Run, Hike, and Swim can all serve as the reference — Bike/Run/Hike "
+            "use distance (miles), Swim uses meters. Ski can't be the reference (there's "
+            "no natural 'distance' for vertical feet to anchor to); its conversion rate "
+            "below always expresses how many vertical feet equal one equity mile."
         )
         _saved_ref = settings.get('reference_sport', 'Bike')
         ref_sport = st.radio(
@@ -3042,78 +3093,76 @@ def render_settings_section(settings, section):
         st.caption(
             "Each sport tab shows a default bundled photo beside its all-time stats. "
             "Upload your own photo, or type a path to an existing file, to override any "
-            "of them. Nothing here takes effect until you hit Save below."
+            "of them. Nothing here takes effect until you hit Save below. Only sports "
+            "currently enabled above show up here."
         )
         if config.DEMO_MODE:
             st.caption("Demo mode — photo uploads are disabled on the public demo.")
-        _img_col_bike, _img_col_snow, _img_col_swim = st.columns(3)
-        with _img_col_bike:
-            if not config.DEMO_MODE:
-                _bike_upload = st.file_uploader(
-                    "Upload a bike photo", type=["png", "jpg", "jpeg", "webp"],
-                    key="settings_bike_image_upload",
-                )
-                _handle_sport_photo_upload('bike', 'settings_bike_image_path', _bike_upload)
-            bike_path = st.text_input(
-                "Bike image path (blank = default)",
-                key="settings_bike_image_path", value=saved_images.get('bike_path') or '',
-                placeholder=config.BIKE_DEFAULT_IMAGE,
-            )
-        with _img_col_snow:
-            if not config.DEMO_MODE:
-                _snow_upload = st.file_uploader(
-                    "Upload a snow photo", type=["png", "jpg", "jpeg", "webp"],
-                    key="settings_snow_image_upload",
-                )
-                _handle_sport_photo_upload('snow', 'settings_snow_image_path', _snow_upload)
-            snow_path = st.text_input(
-                "Snow image path (blank = default)",
-                key="settings_snow_image_path", value=saved_images.get('snow_path') or '',
-                placeholder=config.SNOW_DEFAULT_IMAGE,
-            )
-        with _img_col_swim:
-            if not config.DEMO_MODE:
-                _swim_upload = st.file_uploader(
-                    "Upload a swim photo", type=["png", "jpg", "jpeg", "webp"],
-                    key="settings_swim_image_upload",
-                )
-                _handle_sport_photo_upload('swim', 'settings_swim_image_path', _swim_upload)
-            swim_path = st.text_input(
-                "Swim image path (blank = default)",
-                key="settings_swim_image_path", value=saved_images.get('swim_path') or '',
-                placeholder=config.SWIM_DEFAULT_IMAGE,
-            )
 
-        # --- Row 1: current overrides — only shown when a path is actually set ---
-        st.markdown("**Current overrides**")
-        _ov_bike, _ov_snow, _ov_swim = st.columns(3)
-        for _col, _path, _sport in (
-            (_ov_bike, bike_path, "bike"), (_ov_snow, snow_path, "snow"), (_ov_swim, swim_path, "swim"),
-        ):
-            with _col:
-                if not _path:
-                    st.caption("No override set")
-                elif os.path.exists(_path):
-                    st.image(_path, width=180)
-                else:
-                    st.caption(f"⚠ File not found: {_path}")
+        _default_image_by_prefix = {
+            'bike': config.BIKE_DEFAULT_IMAGE,
+            'snow': config.SNOW_DEFAULT_IMAGE,
+            'swim': config.SWIM_DEFAULT_IMAGE,
+            'run':  config.RUN_DEFAULT_IMAGE,
+            'hike': config.HIKE_DEFAULT_IMAGE,
+        }
+        # Live checkbox values from "Primary Sport Tabs" above, not the saved
+        # settings — this list should react immediately as sports are toggled
+        # within this same render, matching how the Equity Mile Conversions
+        # section above already reacts live to the reference-sport radio.
+        _live_sport_tabs = {'bike': tab_bike, 'snow': tab_snow, 'swim': tab_swim, 'run': tab_run, 'hike': tab_hike}
+        _enabled_image_specs = [s for s in _SPORT_TAB_SPECS if _live_sport_tabs.get(s[0], False)]
 
-        # --- Row 2: bundled defaults, always read straight from assets/ ---
-        st.markdown("**Bundled defaults** (`assets/`)")
-        _def_bike, _def_snow, _def_swim = st.columns(3)
-        for _col, _default_path in (
-            (_def_bike, config.BIKE_DEFAULT_IMAGE),
-            (_def_snow, config.SNOW_DEFAULT_IMAGE),
-            (_def_swim, config.SWIM_DEFAULT_IMAGE),
-        ):
-            with _col:
-                if os.path.exists(_default_path):
-                    st.image(_default_path, width=180)
-                else:
-                    st.caption(f"⚠ File not found: {_default_path}")
+        _image_paths = {}
+        if _enabled_image_specs:
+            _img_cols = st.columns(min(len(_enabled_image_specs), 4))
+            for _i, (_key, _label, _icon, _season_prefix, _img_prefix) in enumerate(_enabled_image_specs):
+                with _img_cols[_i % len(_img_cols)]:
+                    if not config.DEMO_MODE:
+                        _upload = st.file_uploader(
+                            f"Upload a {_label.lower()} photo", type=["png", "jpg", "jpeg", "webp"],
+                            key=f"settings_{_img_prefix}_image_upload",
+                        )
+                        _handle_sport_photo_upload(_img_prefix, f"settings_{_img_prefix}_image_path", _upload)
+                    _image_paths[_img_prefix] = st.text_input(
+                        f"{_label} image path (blank = default)",
+                        key=f"settings_{_img_prefix}_image_path",
+                        value=saved_images.get(f'{_img_prefix}_path') or '',
+                        placeholder=_default_image_by_prefix.get(_img_prefix, ''),
+                    )
+
+            # --- Row 1: current overrides — only shown when a path is actually set ---
+            st.markdown("**Current overrides**")
+            _ov_cols = st.columns(min(len(_enabled_image_specs), 4))
+            for _i, (_key, _label, _icon, _season_prefix, _img_prefix) in enumerate(_enabled_image_specs):
+                with _ov_cols[_i % len(_ov_cols)]:
+                    _path = _image_paths.get(_img_prefix)
+                    if not _path:
+                        st.caption("No override set")
+                    elif os.path.exists(_path):
+                        st.image(_path, width=180)
+                    else:
+                        st.caption(f"⚠ File not found: {_path}")
+
+            # --- Row 2: bundled defaults, always read straight from assets/ ---
+            st.markdown("**Bundled defaults** (`assets/`)")
+            _def_cols = st.columns(min(len(_enabled_image_specs), 4))
+            for _i, (_key, _label, _icon, _season_prefix, _img_prefix) in enumerate(_enabled_image_specs):
+                with _def_cols[_i % len(_def_cols)]:
+                    _default_path = _default_image_by_prefix.get(_img_prefix, '')
+                    if os.path.exists(_default_path):
+                        st.image(_default_path, width=180)
+                    else:
+                        st.caption(f"⚠ File not found: {_default_path}")
 
         st.divider()
         if st.button("Save settings", type="primary"):
+            # Merge onto the saved images dict rather than replacing it, so a
+            # sport that's disabled above (and so has no image widgets
+            # rendered this time) keeps its own path override intact.
+            _new_images = dict(saved_images)
+            for _img_prefix, _path in _image_paths.items():
+                _new_images[f'{_img_prefix}_path'] = (_path or '').strip() or None
             _save(
                 reference_sport=ref_sport,
                 sport_tabs={
@@ -3131,17 +3180,18 @@ def render_settings_section(settings, section):
                     'swim_meters_per_ref_unit':  swim_rate,
                     'ski_vert_per_ref_unit':     ski_rate,
                 },
-                images={
-                    'bike_path': (bike_path or '').strip() or None,
-                    'snow_path': (snow_path or '').strip() or None,
-                    'swim_path': (swim_path or '').strip() or None,
-                },
+                images=_new_images,
             )
 
     # ---- Goals ----
     elif section == "goals":
         st.title("⚙️ Goals")
         st.markdown("**Equity Miles**")
+        st.caption(
+            "The combined goal across every sport — shown as the dashed goal line on "
+            "the Combined tab's monthly chart (all sports' equity miles stacked together, "
+            "not just the reference sport's own miles)."
+        )
         gcol_annual, gcol_monthly = st.columns(2)
         with gcol_annual:
             annual_eq = st.number_input(
@@ -3173,6 +3223,12 @@ def render_settings_section(settings, section):
             )
 
         st.markdown("**Bike Monthly Miles**")
+        st.caption(
+            "A separate, Bike-tab-only mileage target for the Bike tab's own monthly "
+            "chart — not the same as the combined equity-mile goal above. \"Derived\" "
+            "mode reduces the bike target during Swim/Ski season by their expected "
+            "equity contribution that month."
+        )
         _saved_mode = goals.get('bike_monthly_mode', 'derived')
         bike_mode = st.radio(
             "Goal mode", _bike_mode_options,
@@ -3230,42 +3286,51 @@ def render_settings_section(settings, section):
     elif section == "seasons":
         st.title("⚙️ Seasons")
         st.subheader("Season Months")
-        st.caption("Controls which months appear in the monthly chart on each sport tab.")
+        st.caption(
+            "Controls which months appear in the monthly chart on each sport tab. "
+            "Only sports currently enabled in Settings → Sports show up here."
+        )
 
         def _month_index(field, default):
             m = saved_seasons.get(field, default)
             return _month_nums.index(m) if m in _month_nums else default - 1
 
-        smcol_ski, smcol_swim = st.columns(2)
-        with smcol_ski:
-            st.markdown("**Ski season**")
-            ski_start = st.selectbox(
-                "Start month", _month_nums, index=_month_index('ski_start_month', 11),
-                format_func=lambda m: _month_names[m - 1], key="settings_ski_start_month",
-            )
-            ski_end = st.selectbox(
-                "End month", _month_nums, index=_month_index('ski_end_month', 5),
-                format_func=lambda m: _month_names[m - 1], key="settings_ski_end_month",
-            )
-        with smcol_swim:
-            st.markdown("**Swim season**")
-            swim_start = st.selectbox(
-                "Start month", _month_nums, index=_month_index('swim_start_month', 5),
-                format_func=lambda m: _month_names[m - 1], key="settings_swim_start_month",
-            )
-            swim_end = st.selectbox(
-                "End month", _month_nums, index=_month_index('swim_end_month', 9),
-                format_func=lambda m: _month_names[m - 1], key="settings_swim_end_month",
-            )
+        # Ski/Swim default to their traditional seasons; Bike/Run/Hike default
+        # to the full calendar year (no restriction) so nothing changes for
+        # existing users until they narrow one.
+        _season_defaults = {'bike': (1, 12), 'ski': (11, 5), 'swim': (5, 9), 'run': (1, 12), 'hike': (1, 12)}
+        _enabled_season_specs = [
+            s for s in _SPORT_TAB_SPECS if settings.get('sport_tabs', {}).get(s[0], False)
+        ]
+
+        _season_values = {}
+        for _key, _label, _icon, _prefix, _img_prefix in _enabled_season_specs:
+            _def_start, _def_end = _season_defaults.get(_prefix, (1, 12))
+            _lbl_col, _start_col, _end_col = st.columns([1, 1, 1])
+            with _lbl_col:
+                st.markdown(f"**{_icon} {_label}**")
+            with _start_col:
+                _start = st.selectbox(
+                    "Start month", _month_nums, index=_month_index(f'{_prefix}_start_month', _def_start),
+                    format_func=lambda m: _month_names[m - 1], key=f"settings_{_prefix}_start_month",
+                )
+            with _end_col:
+                _end = st.selectbox(
+                    "End month", _month_nums, index=_month_index(f'{_prefix}_end_month', _def_end),
+                    format_func=lambda m: _month_names[m - 1], key=f"settings_{_prefix}_end_month",
+                )
+            _season_values[_prefix] = (_start, _end)
 
         st.divider()
         if st.button("Save settings", type="primary"):
-            _save(seasons={
-                'ski_start_month':  ski_start,
-                'ski_end_month':    ski_end,
-                'swim_start_month': swim_start,
-                'swim_end_month':   swim_end,
-            })
+            # Merge onto the saved seasons dict rather than replacing it, so a
+            # sport that's temporarily disabled in Sports settings (and so
+            # isn't shown above) keeps its own season boundary intact.
+            _new_seasons = dict(saved_seasons)
+            for _prefix, (_start, _end) in _season_values.items():
+                _new_seasons[f'{_prefix}_start_month'] = _start
+                _new_seasons[f'{_prefix}_end_month']   = _end
+            _save(seasons=_new_seasons)
 
     # ---- Map ----
     elif section == "map":
@@ -3354,12 +3419,10 @@ def _p_set_map():     render_settings_section(settings, "map")
 # Which sport tabs are enabled, in the fixed View order — Combined/Wrapped
 # always show every sport regardless of this and are appended separately.
 _sport_tab_settings = settings.get('sport_tabs', {})
+_sport_page_fns = {'bike': _p_bike, 'snow': _p_snow, 'swim': _p_swim, 'run': _p_run, 'hike': _p_hike}
 _sport_page_specs = [
-    ('bike', _p_bike, "Bike",    "🚴", "bike"),
-    ('snow', _p_snow, "Snow",    "⛷️", "snow"),
-    ('swim', _p_swim, "Swim",    "🏊", "swim"),
-    ('run',  _p_run,  "Running", "🏃", "run"),
-    ('hike', _p_hike, "Hiking",  "🥾", "hike"),
+    (key, _sport_page_fns[key], label, icon, key)
+    for key, label, icon, _season_prefix, _image_prefix in _SPORT_TAB_SPECS
 ]
 _enabled_sport_specs = [s for s in _sport_page_specs if _sport_tab_settings.get(s[0], False)]
 _enabled_sport_paths = [s[4] for s in _enabled_sport_specs]

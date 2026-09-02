@@ -935,6 +935,33 @@ def aggregate_equity_by_year(df, settings):
     return pd.DataFrame(rows)
 
 
+def equity_by_sport_recent(df, settings, days=14):
+    """
+    Equity miles earned per sport tab over the trailing ``days`` days
+    (inclusive of today), keyed by sport_tabs settings key ('bike', 'snow',
+    'swim', 'run', 'hike'). Mirrors aggregate_equity_by_year's per-sport math
+    on a single trailing window instead of by calendar year; used to order
+    the sidebar's View section by recent training emphasis rather than the
+    fixed _SPORT_TAB_SPECS order. Paddle/custom aren't sidebar tabs and are
+    omitted.
+    """
+    from src.config import BIKE_TYPES, RUN_TYPES, SKI_TYPES, SWIM_TYPES, HIKE_TYPES
+    rates = _equity_rates(settings)
+
+    df = reconcile_equity_declarations(df, settings)
+    cutoff = pd.Timestamp.now().normalize() - timedelta(days=days - 1)
+    recent = df[df['start_date_local'] >= cutoff]
+    real   = ~recent['is_eq_declaration']
+
+    return {
+        'bike': recent[recent['final_type'].isin(BIKE_TYPES) & real]['distance_miles'].sum() / rates['bike'],
+        'snow': recent[recent['final_type'].isin(SKI_TYPES)  & real]['elevation_feet'].sum() / rates['ski'],
+        'swim': recent[recent['final_type'].isin(SWIM_TYPES) & real]['distance'].sum()       / rates['swim'],
+        'run':  recent[recent['final_type'].isin(RUN_TYPES)  & real]['distance_miles'].sum() / rates['run'],
+        'hike': recent[recent['final_type'].isin(HIKE_TYPES) & real]['distance_miles'].sum() / rates['hike'],
+    }
+
+
 def aggregate_equity_by_month(df, year, settings):
     """
     Equity miles per month (12 rows, 0-filled) for the given year.

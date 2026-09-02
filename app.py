@@ -3416,26 +3416,27 @@ def _p_set_goals():   render_settings_section(settings, "goals")
 def _p_set_seasons(): render_settings_section(settings, "seasons")
 def _p_set_map():     render_settings_section(settings, "map")
 
-# Which sport tabs are enabled, in the fixed View order — Combined/Wrapped
-# always show every sport regardless of this and are appended separately.
+# Which sport tabs are enabled, ordered by trailing-14-day equity miles
+# (most-trained sport first) rather than the fixed _SPORT_TAB_SPECS order —
+# Combined/Wrapped always show every sport regardless of this and are
+# appended separately. Ties (including all-zero, e.g. no recent activity)
+# keep the original _SPORT_TAB_SPECS order via the stable sort.
 _sport_tab_settings = settings.get('sport_tabs', {})
 _sport_page_fns = {'bike': _p_bike, 'snow': _p_snow, 'swim': _p_swim, 'run': _p_run, 'hike': _p_hike}
 _sport_page_specs = [
     (key, _sport_page_fns[key], label, icon, key)
     for key, label, icon, _season_prefix, _image_prefix in _SPORT_TAB_SPECS
 ]
-_enabled_sport_specs = [s for s in _sport_page_specs if _sport_tab_settings.get(s[0], False)]
+_recent_equity = process_data.equity_by_sport_recent(df, settings, days=14)
+_enabled_sport_specs = sorted(
+    (s for s in _sport_page_specs if _sport_tab_settings.get(s[0], False)),
+    key=lambda s: -_recent_equity.get(s[0], 0),
+)
 _enabled_sport_paths = [s[4] for s in _enabled_sport_specs]
 
-# Open on the reference sport's view when it has a dedicated tab enabled;
-# otherwise the first enabled sport tab; otherwise Combined.
-_ref_path = {"Bike": "bike", "Run": "run", "Hike": "hike"}.get(settings.get('reference_sport', 'Bike'))
-if _ref_path in _enabled_sport_paths:
-    _default_path = _ref_path
-elif _enabled_sport_paths:
-    _default_path = _enabled_sport_paths[0]
-else:
-    _default_path = "combined"
+# Open on the top-ranked sport tab (_enabled_sport_paths is already sorted
+# by trailing-14-day equity, most-trained first); otherwise Combined.
+_default_path = _enabled_sport_paths[0] if _enabled_sport_paths else "combined"
 
 def _page(fn, title, icon, path):
     return st.Page(fn, title=title, icon=icon, url_path=path,

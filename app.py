@@ -368,20 +368,35 @@ def _chart_header_with_goal(title, current=None, goal=None, unit_label="", color
             )
 
 
-def _render_top_months_table(ranked, value_fmt, title="Top Ten Months by Distance", n=10):
-    """Render a ranked table of the top ``n`` months by distance (descending).
+_TOP_N_OPTIONS = [5, 10, 15, 20, 25]
+
+
+def _render_ranked_period_table(ranked, value_fmt, title, period_label, key_prefix):
+    """Render a ranked table of the top periods (months or weeks) by distance
+    (descending), with a dropdown to control how many rows show (5-25,
+    default 5).
 
     ``ranked`` is the DataFrame from process_data.rank_months_by_distance /
-    rank_equity_months; ``value_fmt`` formats the native ``value`` for display.
+    rank_equity_months / rank_weeks_by_distance / rank_equity_weeks;
+    ``value_fmt`` formats the native ``value`` for display; ``period_label``
+    names the period column ("Month" or "Week"); ``key_prefix`` scopes the
+    dropdown's session_state key so multiple tables don't collide.
     """
-    st.subheader(title)
+    header_col, ctrl_col = st.columns([3, 1])
+    with header_col:
+        st.subheader(title)
+    with ctrl_col:
+        n = st.selectbox(
+            "Show", _TOP_N_OPTIONS, index=0,
+            key=f"{key_prefix}_top_n", label_visibility="collapsed",
+        )
     if ranked is None or ranked.empty:
-        st.info("No monthly data to rank yet.")
+        st.info("No data to rank yet.")
         return
     top = ranked.head(n).reset_index(drop=True)
     disp = pd.DataFrame({
         "Rank":       range(1, len(top) + 1),
-        "Month":      top['label'],
+        period_label: top['label'],
         "Distance":   top['value'].apply(value_fmt),
         "Activities": top['count'].astype(int),
     })
@@ -767,6 +782,7 @@ def render_bike_tab(bike_df, gear_map, settings):
     ]
     filtered_df = bike_df[bike_df['gear_id'].isin(selected_gears)]
     yearly_all = process_data.aggregate_by_year(filtered_df)
+    bike_weeks_ranked = process_data.rank_weeks_by_distance(filtered_df, 'distance_miles')
     bike_months_ranked = process_data.rank_months_by_distance(filtered_df, 'distance_miles')
 
     _du    = 'mi' if _is_mi else 'km'
@@ -868,7 +884,8 @@ def render_bike_tab(bike_df, gear_map, settings):
             [("All-Time Distance by Month", "all-time-distance-by-month"),
              ("Most Recent Rides", "most-recent-rides"),
              ("Longest Rides",     "longest-rides"),
-             ("Top Ten Months",    "top-ten-months-by-distance")],
+             ("Top Weeks",         "top-weeks-by-distance"),
+             ("Top Months",        "top-months-by-distance")],
             STRAVA_ORANGE,
         )
 
@@ -898,7 +915,12 @@ def render_bike_tab(bike_df, gear_map, settings):
 
         st.divider()
         _bike_month_fmt = (lambda v: f"{v:,.0f} mi") if unit == 'Miles' else (lambda v: f"{v * 1.60934:,.0f} km")
-        _render_top_months_table(bike_months_ranked, _bike_month_fmt)
+        _render_ranked_period_table(bike_weeks_ranked, _bike_month_fmt, "Top Weeks by Distance",
+                                     period_label="Week", key_prefix="bike_weeks")
+
+        st.divider()
+        _render_ranked_period_table(bike_months_ranked, _bike_month_fmt, "Top Months by Distance",
+                                     period_label="Month", key_prefix="bike_months")
 
     st.divider()
 
@@ -975,6 +997,7 @@ def render_ski_tab(ski_df, settings):
     current_season_key = today.year if today.month >= 10 else today.year - 1
 
     seasonal_df = _agg_ski_by_season(ski_df)
+    ski_weeks_ranked  = process_data.rank_weeks_by_distance(ski_df, 'elevation_feet')
     ski_months_ranked = process_data.rank_months_by_distance(ski_df, 'elevation_feet')
 
     # === Section: All-time snapshot ===
@@ -1094,7 +1117,8 @@ def render_ski_tab(ski_df, settings):
         _section_toc(
             [("Most Recent Snow Activities", "most-recent-snow-activities"),
              ("Biggest Snow Days",           "biggest-snow-days-all-seasons"),
-             ("Top Ten Months",             "top-ten-months-by-distance"),
+             ("Top Weeks",                   "top-weeks-by-vertical-feet"),
+             ("Top Months",                  "top-months-by-vertical-feet"),
              ("Snow Days",                   "snow-days")],
             SKI_BLUE,
         )
@@ -1118,9 +1142,14 @@ def render_ski_tab(ski_df, settings):
             "Biggest Snow Days (All Seasons)",
         )
 
-        # --- 6b. Top Ten Months by vertical feet ---
+        # --- 6b. Top Weeks / Top Months by vertical feet ---
         st.divider()
-        _render_top_months_table(ski_months_ranked, lambda v: f"{v:,.0f} ft")
+        _render_ranked_period_table(ski_weeks_ranked, lambda v: f"{v:,.0f} ft", "Top Weeks by Vertical Feet",
+                                     period_label="Week", key_prefix="ski_weeks")
+
+        st.divider()
+        _render_ranked_period_table(ski_months_ranked, lambda v: f"{v:,.0f} ft", "Top Months by Vertical Feet",
+                                     period_label="Month", key_prefix="ski_months")
 
         # --- 7. All Snow Days (reverse chronological) ---
         st.divider()
@@ -1200,6 +1229,7 @@ def render_swim_tab(swim_df, settings, df=None):
     with st.container(border=True):
         # --- 1. All-time stats line (left) + pool image (right) ---
         yearly = _agg_swim_by_year(swim_df)
+        swim_weeks_ranked  = process_data.rank_weeks_by_distance(swim_df, 'distance')
         swim_months_ranked = process_data.rank_months_by_distance(swim_df, 'distance')
         # Units are chosen by the radio further down; read the current choice from
         # session_state so this top line already reflects it on rerun.
@@ -1323,7 +1353,8 @@ def render_swim_tab(swim_df, settings, df=None):
             [("All-Time Distance by Month", "all-time-distance-by-month"),
              ("Most Recent Swims",       "most-recent-swims"),
              ("All-time Longest Swims",  "all-time-longest-swims"),
-             ("Top Ten Months",          "top-ten-months-by-distance")],
+             ("Top Weeks",               "top-weeks-by-distance"),
+             ("Top Months",              "top-months-by-distance")],
             SWIM_TEAL,
         )
 
@@ -1349,10 +1380,15 @@ def render_swim_tab(swim_df, settings, df=None):
         st.divider()
         _render_longest_table(swim_df, 'distance', fmt_swim, "All-time Longest Swims")
 
-        # --- 10. Top Ten Months by distance ---
+        # --- 10. Top Weeks / Top Months by distance ---
         st.divider()
         _swim_month_fmt = (lambda v: f"{v:,.0f} m") if unit == 'Meters' else (lambda v: f"{v * 1.09361:,.0f} yd")
-        _render_top_months_table(swim_months_ranked, _swim_month_fmt)
+        _render_ranked_period_table(swim_weeks_ranked, _swim_month_fmt, "Top Weeks by Distance",
+                                     period_label="Week", key_prefix="swim_weeks")
+
+        st.divider()
+        _render_ranked_period_table(swim_months_ranked, _swim_month_fmt, "Top Months by Distance",
+                                     period_label="Month", key_prefix="swim_months")
 
     # --- 11. Experiments: Month/Week comparison tooling ---
     st.divider()
@@ -1408,6 +1444,7 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
         filtered_df = df
 
     yearly_all = process_data.aggregate_by_year(filtered_df)
+    weeks_ranked  = process_data.rank_weeks_by_distance(filtered_df, 'distance_miles')
     months_ranked = process_data.rank_months_by_distance(filtered_df, 'distance_miles')
 
     _default_img_by_sport = {'run': config.RUN_DEFAULT_IMAGE, 'hike': config.HIKE_DEFAULT_IMAGE}
@@ -1517,7 +1554,8 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
         _section_toc(
             [(f"Most Recent {count_noun}", f"most-recent-{count_noun.lower()}"),
              (f"Longest {count_noun}",     f"longest-{count_noun.lower()}"),
-             ("Top Ten Months",            "top-ten-months-by-distance")],
+             ("Top Weeks",                 "top-weeks-by-distance"),
+             ("Top Months",                "top-months-by-distance")],
             color,
         )
 
@@ -1531,7 +1569,12 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
         _render_longest_table(filtered_df, 'distance_miles', fmt_activity, f"Longest {count_noun}")
 
         st.divider()
-        _render_top_months_table(months_ranked, lambda v: f"{v:,.0f} mi")
+        _render_ranked_period_table(weeks_ranked, lambda v: f"{v:,.0f} mi", "Top Weeks by Distance",
+                                     period_label="Week", key_prefix=f"{sport_key}_weeks")
+
+        st.divider()
+        _render_ranked_period_table(months_ranked, lambda v: f"{v:,.0f} mi", "Top Months by Distance",
+                                     period_label="Month", key_prefix=f"{sport_key}_months")
 
     # --- Gear filter (bottom), only if this sport has gear tagged ---
     if has_gear:
@@ -1567,7 +1610,7 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
 def render_equity_tab(df, settings):
     """Combined tab: the app's cross-sport "equity miles" view. All-time stats
     line (total + each sport's share), a multi-year overview chart, a
-    year-selector + stats box + monthly breakdown, a Top Ten Months table,
+    year-selector + stats box + monthly breakdown, Top Weeks/Top Months tables,
     and a table of manually-declared "custom" equity (see
     process_data.reconcile_equity_declarations for the counting policy)."""
     goals       = settings.get('goals', {})
@@ -1588,6 +1631,7 @@ def render_equity_tab(df, settings):
     today = date.today()
     current_year = today.year
     yearly = process_data.aggregate_equity_by_year(df, settings)
+    eq_weeks_ranked  = process_data.rank_equity_weeks(df, settings)
     eq_months_ranked = process_data.rank_equity_months(df, settings)
 
     # --- All-time stats line (top): total + each sport's contribution ---
@@ -1661,9 +1705,14 @@ def render_equity_tab(df, settings):
         make_equity_monthly_chart(monthly, ref_label=ref_label, goal=monthly_goal),
     )
 
-    # --- 5. Top Ten Months by equity miles ---
+    # --- 5. Top Weeks / Top Months by equity miles ---
     st.divider()
-    _render_top_months_table(eq_months_ranked, lambda v: f"{v:,.0f} mi")
+    _render_ranked_period_table(eq_weeks_ranked, lambda v: f"{v:,.0f} mi", "Top Weeks by Equity Miles",
+                                 period_label="Week", key_prefix="equity_weeks")
+
+    st.divider()
+    _render_ranked_period_table(eq_months_ranked, lambda v: f"{v:,.0f} mi", "Top Months by Equity Miles",
+                                 period_label="Month", key_prefix="equity_months")
 
     st.divider()
 

@@ -1069,6 +1069,97 @@ def rank_equity_months(df, settings, n=None):
     return out if n is None else out.head(n)
 
 
+def _week_range_label(monday, sunday):
+    """Format an ISO week (Mon-Sun date pair) as e.g. 'Aug 25 - Aug 31, 2025',
+    or 'Dec 29, 2025 - Jan 4, 2026' when the week spans a year boundary."""
+    if monday.year == sunday.year:
+        return f"{monday.strftime('%b')} {monday.day} - {sunday.strftime('%b')} {sunday.day}, {sunday.year}"
+    return (f"{monday.strftime('%b')} {monday.day}, {monday.year} - "
+            f"{sunday.strftime('%b')} {sunday.day}, {sunday.year}")
+
+
+def rank_weeks_by_distance(df, value_col, n=None):
+    """All-time per-ISO-week totals of ``value_col``, ranked descending.
+
+    Weeks run Monday-Sunday (ISO 8601), mirroring rank_months_by_distance at
+    week granularity for the 'Top Weeks' table. Returns DataFrame[iso_year,
+    iso_week, label, value, count] where ``label`` is e.g. "Aug 25 - Aug 31,
+    2025" and ``count`` is the number of activities that week. ``value`` is
+    in the column's native units; callers convert/format for display. Pass
+    ``n`` to cap rows.
+    """
+    cols = ['iso_year', 'iso_week', 'label', 'value', 'count']
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols)
+    d = df.copy()
+    iso = d['start_date_local'].dt.isocalendar()
+    d['_iso_year'] = iso['year']
+    d['_iso_week'] = iso['week']
+    g = (
+        d.groupby(['_iso_year', '_iso_week'])
+        .agg(value=(value_col, 'sum'), count=('id', 'count'))
+        .reset_index()
+        .rename(columns={'_iso_year': 'iso_year', '_iso_week': 'iso_week'})
+    )
+
+    def _label(row):
+        monday = date.fromisocalendar(int(row['iso_year']), int(row['iso_week']), 1)
+        return _week_range_label(monday, monday + timedelta(days=6))
+
+    g['label'] = g.apply(_label, axis=1)
+    # Rank by value descending; break ties by most-recent week first.
+    g = g.sort_values(
+        ['value', 'iso_year', 'iso_week'], ascending=[False, False, False],
+    ).reset_index(drop=True)
+    return g if n is None else g.head(n)
+
+
+def rank_equity_weeks(df, settings, n=None):
+    """All-time per-ISO-week total equity miles, ranked descending.
+
+    Same shape as :func:`rank_weeks_by_distance` (iso_year, iso_week, label,
+    value, count); ``value`` is total equity miles for that week (Mon-Sun).
+    Mirrors :func:`rank_equity_months` at week granularity.
+    """
+    from src.config import (BIKE_TYPES, RUN_TYPES, SKI_TYPES, SWIM_TYPES,
+                            HIKE_TYPES, PADDLE_TYPES)
+    cols = ['iso_year', 'iso_week', 'label', 'value', 'count']
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols)
+
+    rates = _equity_rates(settings)
+    df = reconcile_equity_declarations(df, settings)
+    iso = df['start_date_local'].dt.isocalendar()
+    df = df.assign(_iso_year=iso['year'], _iso_week=iso['week'])
+
+    rows = []
+    for (iso_year, iso_week), wk in df.groupby(['_iso_year', '_iso_week']):
+        real = ~wk['is_eq_declaration']
+        bike   = wk[wk['final_type'].isin(BIKE_TYPES)   & real]['distance_miles'].sum() / rates['bike']
+        run    = wk[wk['final_type'].isin(RUN_TYPES)    & real]['distance_miles'].sum() / rates['run']
+        ski    = wk[wk['final_type'].isin(SKI_TYPES)    & real]['elevation_feet'].sum() / rates['ski']
+        swim   = wk[wk['final_type'].isin(SWIM_TYPES)   & real]['distance'].sum()       / rates['swim']
+        hike   = wk[wk['final_type'].isin(HIKE_TYPES)   & real]['distance_miles'].sum() / rates['hike']
+        paddle = wk[wk['final_type'].isin(PADDLE_TYPES) & real]['distance_miles'].sum() / rates['paddle']
+        custom = wk[wk['eq_counts']]['distance_miles'].sum()
+        total = bike + run + ski + swim + hike + paddle + custom
+        if total <= 0:
+            continue
+        monday = date.fromisocalendar(int(iso_year), int(iso_week), 1)
+        rows.append({
+            'iso_year': int(iso_year), 'iso_week': int(iso_week),
+            'label': _week_range_label(monday, monday + timedelta(days=6)),
+            'value': float(total), 'count': int(len(wk)),
+        })
+    out = pd.DataFrame(rows, columns=cols)
+    if out.empty:
+        return out
+    out = out.sort_values(
+        ['value', 'iso_year', 'iso_week'], ascending=[False, False, False],
+    ).reset_index(drop=True)
+    return out if n is None else out.head(n)
+
+
 def compute_period_stats(df):
     """
     Compute wrapped-style stats for any pre-filtered period.

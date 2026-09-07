@@ -339,17 +339,19 @@ def make_sport_breakdown_donut(bucket_df, value_label, height=None):
     return fig
 
 
-SWIM_TEAL_LIGHT = '#90E0EF'
+SWIM_TEAL_LIGHT  = '#90E0EF'
+SWIM_TEAL_BRIGHT = '#00E5FF'   # current-year bar — vivid, not just paled, so it pops against past years
 
 
 def make_swim_year_chart(yearly_df, current_year, annual_goal=None, height=None):
     """
     Bar chart of total meters (or yards) per year.
-    Current year lighter; optional dashed annual-goal line.
-    Pass height (px) for a thin/compact variant.
+    Current year in a brighter accent; optional dashed annual-goal line.
+    Title subtitle names the record year and how far the current year's
+    YTD total sits above/below it. Pass height (px) for a thin/compact variant.
     """
     colors = [
-        SWIM_TEAL_LIGHT if int(row['year']) >= current_year else SWIM_TEAL
+        SWIM_TEAL_BRIGHT if int(row['year']) >= current_year else SWIM_TEAL
         for _, row in yearly_df.iterrows()
     ]
     y_col = yearly_df.columns[2]  # 'meters' or 'yards' — whichever caller passes
@@ -368,7 +370,7 @@ def make_swim_year_chart(yearly_df, current_year, annual_goal=None, height=None)
         fig.add_annotation(
             x=year_list.index(row['year']), y=row[y_col],
             text="YTD", showarrow=False, yshift=28,
-            font=dict(size=10, color=SWIM_TEAL_LIGHT),
+            font=dict(size=10, color=SWIM_TEAL_BRIGHT),
         )
 
     if annual_goal and annual_goal > 0:
@@ -379,8 +381,18 @@ def make_swim_year_chart(yearly_df, current_year, annual_goal=None, height=None)
             annotation_position='top right', annotation_font_size=11,
         )
 
+    record_row  = yearly_df.loc[yearly_df[y_col].idxmax()]
+    record_year = int(record_row['year'])
+    record_val  = record_row[y_col]
+    subtitle = f"Record: {record_year} · {record_val:,.0f} {y_col}"
+    cur_rows = yearly_df[yearly_df['year'] == current_year]
+    if not cur_rows.empty and record_year != current_year:
+        diff = cur_rows.iloc[0][y_col] - record_val
+        direction = "above" if diff >= 0 else "below"
+        subtitle += f" — {current_year} YTD {abs(diff):,.0f} {y_col} {direction}"
+
     layout = _base_layout(
-        title=f"Annual Distance ({y_col})",
+        title=f"Annual Distance ({y_col})<br><span style='font-size:12px;color:gray'>{subtitle}</span>",
         xaxis_title="Year",
         yaxis_title=y_col.capitalize(),
         showlegend=False,

@@ -287,6 +287,13 @@ def _fmt_date_long(dt):
     return dt.strftime('%a %b ') + str(dt.day) + dt.strftime(', %Y')
 
 
+def _since_year(df):
+    """Earliest calendar year present in ``df``, or None if empty. Used to
+    caption 'all-time' labels with the archive's real start (e.g. 2018) —
+    the sport itself may predate Strava, but the tracked history doesn't."""
+    return int(df['year'].min()) if not df.empty else None
+
+
 def _stats_box(items):
     """Compact horizontal stats strip. items = list of (label, value) tuples."""
     dark = st.context.theme.type == 'dark'
@@ -315,7 +322,7 @@ def _stats_box(items):
 
 def _all_time_line(*, distance, hours, activities, seasons, best_year,
                    largest_month, highest, equity, avg, avg_time, avg_speed,
-                   avg_speed_label="Avg Speed", extra=None):
+                   since_year, avg_speed_label="Avg Speed", extra=None):
     """Render the uniform all-time stats line shared by the sport tabs.
 
     Every sport shows the same slots in the same order; values are pre-formatted
@@ -324,14 +331,18 @@ def _all_time_line(*, distance, hours, activities, seasons, best_year,
     coarse to fine: best year → largest month → highest single activity. The
     trailing averages (distance, time, speed) are all per-activity.
 
-    ``avg_speed_label`` lets a tab relabel that slot when its "speed" isn't a
-    literal travel speed (e.g. Snow's vertical-feet-per-hour rate). ``extra``
-    is an optional list of (label, value) tuples appended after the standard
-    slots, for sport-specific stats that don't fit the shared shape (e.g.
-    Snow's actual mph average/top speed).
+    ``since_year`` is the earliest year of data for this sport (the archive
+    doesn't go back further, even though the sport itself predates Strava) —
+    it captions the Distance tile so "all-time" reads as the tracked range,
+    not a lifetime claim. ``avg_speed_label`` lets a tab relabel that slot
+    when its "speed" isn't a literal travel speed (e.g. Snow's
+    vertical-feet-per-hour rate). ``extra`` is an optional list of (label,
+    value) tuples appended after the standard slots, for sport-specific
+    stats that don't fit the shared shape (e.g. Snow's actual mph
+    average/top speed).
     """
     _stats_box([
-        ("All-Time Distance", distance),
+        (f"Distance (Since {since_year})", distance),
         ("Hours",             hours),
         ("Activities",        activities),
         ("Seasons",           seasons),
@@ -817,6 +828,7 @@ def render_bike_tab(bike_df, gear_map, settings):
                     avg=f"{_conv(filtered_df['distance_miles'].mean()):,.1f} {_du}",
                     avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
                     avg_speed=f"{_conv(_tot) / _hrs:,.1f} {_du}/h" if _hrs else "—",
+                    since_year=_since_year(filtered_df),
                 )
         with _thumb_col:
             _bike_img_path = (settings.get('images', {}) or {}).get('bike_path') or config.BIKE_DEFAULT_IMAGE
@@ -880,8 +892,9 @@ def render_bike_tab(bike_df, gear_map, settings):
                 ])
 
         # --- Table of contents for the list sections below ---
+        _bike_since = _since_year(filtered_df)
         _section_toc(
-            [("All-Time Distance by Month", "all-time-distance-by-month"),
+            [("All-Time Distance by Month", f"all-time-distance-by-month-since-{_bike_since}"),
              ("Most Recent Rides", "most-recent-rides"),
              ("Longest Rides",     "longest-rides"),
              ("Top Weeks",         "top-weeks-by-distance"),
@@ -897,7 +910,7 @@ def render_bike_tab(bike_df, gear_map, settings):
     # === Section: Detail tables ===
     with st.container(border=True):
         # --- All-time monthly pattern (which calendar months you actually ride) ---
-        st.subheader("All-Time Distance by Month")
+        st.subheader(f"All-Time Distance by Month (Since {_bike_since})")
         _alltime_monthly_bike = process_data.aggregate_bike_by_month(filtered_df)
         _alltime_monthly_bike = process_data.filter_monthly_to_season(
             _alltime_monthly_bike, _bike_start_month, _bike_end_month,
@@ -943,7 +956,7 @@ def render_bike_tab(bike_df, gear_map, settings):
             .head(4)
         )
         if not _bike_totals.empty:
-            st.markdown("**Top Bikes — All-Time Miles**")
+            st.markdown(f"**Top Bikes — Miles (Since {_since_year(bike_df)})**")
             _stats_box([
                 (gear_map.get(gid, gid) if gid else "Unknown Bike", f"{_conv(mi):,.0f} {_du}")
                 for gid, mi in _bike_totals.items()
@@ -1045,6 +1058,7 @@ def render_ski_tab(ski_df, settings):
                         ("Avg Speed", f"{_avg_mph:,.1f} mph" if _all_hrs else "—"),
                         ("Top Speed", f"{_top_mph:,.1f} mph" if _top_mph else "—"),
                     ],
+                    since_year=_since_year(ski_df),
                 )
         with _img_col:
             _img_path = (settings.get('images', {}) or {}).get('snow_path') or config.SNOW_DEFAULT_IMAGE
@@ -1264,6 +1278,7 @@ def render_swim_tab(swim_df, settings, df=None):
                     avg=f"{_avg * _mult:,.0f} {_dlabel}",
                     avg_time=_fmt_time(_all_secs / _all_sw) if _all_sw else "—",
                     avg_speed=f"{_all_m * _mult / _all_hrs:,.0f} {_dlabel}/h" if _all_hrs else "—",
+                    since_year=_since_year(swim_df),
                 )
         with _img_col:
             _img_path = (settings.get('images', {}) or {}).get('swim_path') or config.SWIM_DEFAULT_IMAGE
@@ -1349,10 +1364,11 @@ def render_swim_tab(swim_df, settings, df=None):
         _render_longest_table(period_df, 'distance', fmt_swim, f"Top 5 Swims — {_period_label}", n=5)
 
         # --- 6. Table of contents for the list sections below ---
+        _swim_since = _since_year(swim_df)
         _section_toc(
-            [("All-Time Distance by Month", "all-time-distance-by-month"),
+            [("All-Time Distance by Month", f"all-time-distance-by-month-since-{_swim_since}"),
              ("Most Recent Swims",       "most-recent-swims"),
-             ("All-time Longest Swims",  "all-time-longest-swims"),
+             ("All-time Longest Swims",  f"all-time-longest-swims-since-{_swim_since}"),
              ("Top Weeks",               "top-weeks-by-distance"),
              ("Top Months",              "top-months-by-distance")],
             SWIM_TEAL,
@@ -1361,7 +1377,7 @@ def render_swim_tab(swim_df, settings, df=None):
     # === Section: Detail tables ===
     with st.container(border=True):
         # --- 7. All-time monthly pattern (which calendar months you actually swim) ---
-        st.subheader("All-Time Distance by Month")
+        st.subheader(f"All-Time Distance by Month (Since {_swim_since})")
         _alltime_monthly_swim = _agg_swim_by_month(swim_df, None)
         _dc_all = 'meters' if _unit == 'Meters' else 'yards'
         if _alltime_monthly_swim['swims'].sum() > 0:
@@ -1378,7 +1394,7 @@ def render_swim_tab(swim_df, settings, df=None):
 
         # --- 9. All-time Longest Swims ---
         st.divider()
-        _render_longest_table(swim_df, 'distance', fmt_swim, "All-time Longest Swims")
+        _render_longest_table(swim_df, 'distance', fmt_swim, f"All-time Longest Swims (Since {_swim_since})")
 
         # --- 10. Top Weeks / Top Months by distance ---
         st.divider()
@@ -1477,6 +1493,7 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
                     avg=f"{filtered_df['distance_miles'].mean():,.1f} mi",
                     avg_time=_fmt_time(_hrs * 3600 / _cnt) if _cnt else "—",
                     avg_speed=f"{_tot / _hrs:,.1f} mi/h" if _hrs else "—",
+                    since_year=_since_year(filtered_df),
                 )
         with _img_col:
             _img_path = (settings.get('images', {}) or {}).get(f'{sport_key}_path') or _default_img_by_sport.get(sport_key)
@@ -1491,7 +1508,7 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
                 .head(4)
             )
             if not _gear_totals.empty:
-                st.markdown(f"**Top {gear_noun} — All-Time Miles**")
+                st.markdown(f"**Top {gear_noun} — Miles (Since {_since_year(df)})**")
                 _stats_box([
                     (gear_map.get(gid, gid), f"{mi:,.0f} mi")
                     for gid, mi in _gear_totals.items()
@@ -1514,7 +1531,7 @@ def render_activity_tab(df, gear_map, settings, *, sport_key, label, color, colo
             st.plotly_chart(
                 make_monthly_chart(
                     _alltime_monthly, 'miles', 'Miles',
-                    title="All-Time Miles by Month", color=color,
+                    title=f"All-Time Miles by Month (Since {_since_year(df)})", color=color,
                 ),
             )
 
@@ -1637,7 +1654,7 @@ def render_equity_tab(df, settings):
     # --- All-time stats line (top): total + each sport's contribution ---
     if not yearly.empty:
         all_total = yearly['total'].sum()
-        all_items = [("All-Time Equity Miles", f"{all_total:,.0f}")]
+        all_items = [(f"Equity Miles (Since {_since_year(df)})", f"{all_total:,.0f}")]
         for col, label in [('bike','Bike'), ('run','Run'), ('ski','Ski'), ('swim','Swim'),
                            ('hike','Hike'), ('paddle','Paddle'), ('custom','Custom')]:
             if col in yearly.columns:

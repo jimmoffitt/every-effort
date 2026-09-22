@@ -386,7 +386,15 @@ def make_swim_year_chart(yearly_df, current_year, annual_goal=None, height=None)
     record_val  = record_row[y_col]
     subtitle = f"Record: {record_year} · {record_val:,.0f} {y_col}"
     cur_rows = yearly_df[yearly_df['year'] == current_year]
-    if not cur_rows.empty and record_year != current_year:
+    if record_year == current_year:
+        # The record is being set right now — name the margin over the mark it
+        # passed, so an in-progress record reads as more than just a big number.
+        prior = yearly_df[yearly_df['year'] < record_year]
+        if not prior.empty:
+            prev_row = prior.loc[prior[y_col].idxmax()]
+            subtitle += (f" ({record_val - prev_row[y_col]:,.0f} over previous "
+                         f"record in year {int(prev_row['year'])})")
+    elif not cur_rows.empty:
         diff = cur_rows.iloc[0][y_col] - record_val
         direction = "above" if diff >= 0 else "below"
         subtitle += f" — {current_year} YTD {abs(diff):,.0f} {y_col} {direction}"

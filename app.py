@@ -1264,6 +1264,11 @@ def render_swim_tab(swim_df, settings, df=None):
                 _ref      = settings.get('reference_sport', 'Bike')
                 _eq       = 0 if _ref == 'Swim' else (_all_m / _swim_per if _swim_per else 0)
                 _avg      = (_all_m / _all_sw) if _all_sw else 0
+                # Monthly average over the months actually swum, not every
+                # calendar month since the archive starts — the off-season
+                # zeros would otherwise drag it well below a real swim month.
+                _months_swum = swim_df['start_date_local'].dt.to_period('M').nunique()
+                _avg_month   = (_all_m / _months_swum) if _months_swum else 0
                 _all_secs = swim_df['moving_time'].sum()
                 _all_hrs  = _all_secs / 3600
                 _all_time_line(
@@ -1278,6 +1283,7 @@ def render_swim_tab(swim_df, settings, df=None):
                     avg=f"{_avg * _mult:,.0f} {_dlabel}",
                     avg_time=_fmt_time(_all_secs / _all_sw) if _all_sw else "—",
                     avg_speed=f"{_all_m * _mult / _all_hrs:,.0f} {_dlabel}/h" if _all_hrs else "—",
+                    extra=[("Avg per Month", f"{_avg_month * _mult:,.0f} {_dlabel}")],
                     since_year=_since_year(swim_df),
                 )
         with _img_col:
